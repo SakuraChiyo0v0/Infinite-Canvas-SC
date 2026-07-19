@@ -1,0 +1,34 @@
+# Local secrets
+API/.env
+*.env
+*.env.local
+
+# Runtime state and user-generated data
+data/
+assets/input/
+assets/output/
+assets/uploads/
+assets/library/
+output/
+history.json
+global_config.json
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local/offline runtime bundles
+python/
+packages/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

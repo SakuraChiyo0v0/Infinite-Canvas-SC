@@ -1,0 +1,38 @@
+services:
+  infinite-canvas:
+    build:
+      context: .
+    container_name: infinite-canvas
+    restart: unless-stopped
+    ports:
+      - "3300:3000"
+    environment:
+      TZ: Asia/Shanghai
+      CODEX_HOME: /root/.codex
+      HTTP_PROXY: http://172.17.0.1:7890
+      HTTPS_PROXY: http://172.17.0.1:7890
+      ALL_PROXY: http://172.17.0.1:7890
+      http_proxy: http://172.17.0.1:7890
+      https_proxy: http://172.17.0.1:7890
+      all_proxy: http://172.17.0.1:7890
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
+    volumes:
+      - ./API:/app/API
+      - ./data:/app/data
+      - ./assets:/app/assets
+      - ./output:/app/output
+      - ./workflows:/app/workflows
+      - /usr/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex:/usr/local/bin/codex:ro
+      - /usr/lib/node_modules/gpt-image-2-skill/node_modules/gpt-image-2-skill-linux-x64-static/bin/gpt-image-2-skill:/usr/local/bin/gpt-image-2-skill:ro
+      - /root/.codex:/root/.codex
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/', timeout=5).read()\""
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
