@@ -23,7 +23,7 @@
     <script src="/static/js/i18n.js?v=2026.07.17.1784453321"></script>
     <script src="/static/js/image-preview.js?v=2026.07.17.1784453321"></script>
     <script src="/static/js/history-bulk-manager.js?v=2026.07.17.1784453321"></script>
-    <script src="/static/js/cli-image-tools.js?v=2026.07.17.1784458442"></script>
+    <script src="/static/js/cli-image-tools.js?v=2026.07.19.184500"></script>
     <script type="importmap">
         {
             "imports": {
@@ -447,6 +447,7 @@
                     <div id="cliProviderWrap" class="hidden mt-2">
                         <div id="cliProviderSelect" class="cli-provider-picker"></div>
                         <div id="cliProviderHint" class="mt-1 text-[9px] font-medium text-gray-400"></div>
+                        <div id="cliSizeWrap" class="hidden"></div>
                     </div>
 
                     <button id="genBtn" onclick="handleGenerate()"
@@ -808,6 +809,7 @@
         const cliEngine = StudioCliImageTools.create({
             selectId: 'cliProviderSelect', hintId: 'cliProviderHint', wrapId: 'cliProviderWrap', storageKey: 'angle_cli_provider_id'
         });
+        const cliSizeControl = StudioCliImageTools.createSizeControl({ wrapId: 'cliSizeWrap', storageKey: 'angle_cli_size' });
 
         window.switchEngine = function(mode) {
             currentEngine = ['local', 'cloud', 'cli'].includes(mode) ? mode : 'local';
@@ -823,6 +825,7 @@
             cloudBtn.classList.toggle('active', currentEngine === 'cloud');
             cliBtn.classList.toggle('active', currentEngine === 'cli');
             cliEngine.setActive(currentEngine === 'cli');
+            cliSizeControl.setActive(currentEngine === 'cli');
         };
 
         function generateUUID() {
@@ -849,6 +852,7 @@
         const fileInput = document.getElementById('fileInput');
         const previewImg = document.getElementById('previewImg');
         const promptInput = document.getElementById('promptInput');
+        previewImg.onload = () => cliSizeControl.setSourceDimensions(previewImg.naturalWidth, previewImg.naturalHeight);
 
         dropzone.onclick = () => fileInput.click();
         fileInput.onchange = (e) => handleFile(e.target.files[0]);
@@ -1106,7 +1110,7 @@
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: promptInput.value,
-                    provider_id: provider.id, model: provider.image_models[0], size: '1024x1024',
+                    provider_id: provider.id, model: provider.image_models[0], size: cliSizeControl.value(),
                     reference_images: [{ url: uploadedDataUrl, name: 'angle-source', kind: 'image', mime: uploadedFile?.type || '' }],
                     history_type: 'angle'
                 })
