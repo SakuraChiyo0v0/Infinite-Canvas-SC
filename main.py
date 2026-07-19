@@ -1367,6 +1367,60 @@ def public_provider(provider):
 def public_api_providers():
     return [public_provider(p) for p in load_api_providers()]
 
+PROVIDER_IMAGE_READY_CACHE = {}
+PROVIDER_IMAGE_READY_CACHE_TTL_SECONDS = 15
+
+async def cli_image_configured(protocol):
+    now = time.monotonic()
+    cached = PROVIDER_IMAGE_READY_CACHE.get(protocol)
+    if cached and cached["expires_at"] > now:
+        return cached["configured"]
+    if protocol == "codex":
+        status = await codex_status()
+        configured = bool(status.get("installed") and status.get("image2_helper_installed"))
+    elif protocol == "jimeng":
+        status = await jimeng_status()
+        configured = bool(status.get("installed") and status.get("logged_in") and status.get("version_ok") is not False)
+    elif protocol == "gemini-cli":
+        status = await gemini_cli_status()
+        configured = bool(status.get("installed"))
+    else:
+        configured = False
+    PROVIDER_IMAGE_READY_CACHE[protocol] = {
+        "configured": configured,
+        "expires_at": now + PROVIDER_IMAGE_READY_CACHE_TTL_SECONDS,
+    }
+    return configured
+
+def api_image_configured(provider):
+    protocol = str(provider.get("protocol") or "openai").lower()
+    if provider.get("enabled") is False or not provider.get("image_models"):
+        return False
+    if protocol == "runninghub":
+        return bool(provider.get("has_key") or provider.get("has_wallet_key"))
+    if protocol == "volcengine":
+        return bool(provider.get("has_volcengine_access_key") and provider.get("has_volcengine_secret_key"))
+    if provider.get("id") == "modelscope":
+        return bool(provider.get("has_key"))
+    return bool(provider.get("has_key") or provider.get("base_url"))
+
+async def public_api_providers_with_image_configuration(providers=None):
+    providers = providers if providers is not None else public_api_providers()
+    cli_protocols = {str(item.get("protocol") or "").lower() for item in providers}
+    cli_ready = {
+        protocol: await cli_image_configured(protocol)
+        for protocol in cli_protocols.intersection({"codex", "jimeng", "gemini-cli"})
+    }
+    for provider in providers:
+        protocol = str(provider.get("protocol") or "openai").lower()
+        has_image_model = bool(provider.get("image_models"))
+        if protocol in cli_ready:
+            image_configured = bool(provider.get("enabled", True) and has_image_model and cli_ready[protocol])
+        else:
+            image_configured = api_image_configured(provider)
+        provider["image_configured"] = image_configured
+    return providers
+
 def get_primary_provider_id(providers=None):
     """返回当前首选 provider 的 id；优先 primary=True 的，否则取第一个非 modelscope 的，再次取第一个。"""
     providers = providers if providers is not None else load_api_providers()
@@ -2499,6 +2553,7 @@ class OnlineImageRequest(BaseModel):
     quality: str = "auto"
     n: int = 1
     reference_images: List[AIReference] = []
+    history_type: str = "online"
 
 class ImageTaskQueryRequest(BaseModel):
     provider_id: str = "comfly"
@@ -4496,6 +4551,18 @@ def gpt_image_2_skill_executable():
         or ""
     )
 
+def gpt_image_2_skill_command():
+    configured = str(codex_env_value("GPT_IMAGE_2_SKILL_BIN") or "").strip()
+    if configured:
+        return [configured]
+    user_profile = os.getenv("USERPROFILE", "").strip()
+    wrapper_path = os.path.join(user_profile, ".codex", "skills", "gpt-image-2-skill", "scripts", "gpt_image_2_skill.cjs") if user_profile else ""
+    node = shutil.which("node.exe") or shutil.which("node")
+    if wrapper_path and os.path.isfile(wrapper_path) and node:
+        return [node, wrapper_path]
+    exe = gpt_image_2_skill_executable()
+    return [exe] if exe else []
+
 def gpt_image_2_skill_auth_file():
     configured = str(codex_env_value("GPT_IMAGE_2_SKILL_AUTH_FILE") or codex_env_value("CODEX_AUTH_FILE") or "").strip()
     if configured:
@@ -4581,15 +4648,21 @@ def gpt_image_2_skill_size_arg(size="", model="", prompt="", provider="openai"):
     text = " ".join([str(size or ""), str(model or ""), str(prompt or "")]).lower()
     size_text = str(size or "").strip()
     if str(provider or "").strip().lower() == "codex":
+        # The GPT Image 2 helper accepts auto, 2K, 4K, or WIDTHxHEIGHT;
+        # unlike some other image providers it does not accept the 1K alias.
+        # Preserve explicit dimensions before looking at resolution hints in the
+        # prompt/model, otherwise e.g. 1024x1536 was incorrectly sent as 1K.
+        width, height = parse_size_pair(size_text)
+        if width > 0 and height > 0:
+            return normalize_gpt_image_2_size(f"{width}x{height}")
         if "1k" in text or "1024" in text:
-            return "1K"
+            return "1024x1024"
         if "2k" in text or "2048" in text:
             return "2K"
         if "4k" in text or "3840" in text:
             return "4K"
-        width, height = parse_size_pair(size_text)
         if 0 < max(width, height) < 1800:
-            return "1K"
+            return "1024x1024"
         if 1800 <= max(width, height) < 3000:
             return "2K"
         return "4K"
@@ -4612,7 +4685,7 @@ def gpt_image_2_skill_size_arg(size="", model="", prompt="", provider="openai"):
     if "4k" in text or "3840" in text:
         return "4K"
     if "1k" in text or "1024" in text:
-        return "1K"
+        return "1024x1024"
     return "2K"
 
 def gpt_image_2_skill_prompt_arg(prompt="", size="", provider="openai"):
@@ -4764,8 +4837,8 @@ def codex_postprocess_image_to_requested_size(path="", requested_size="", provid
         return ""
 
 async def generate_codex_provider_image_via_gpt_image_2_skill(prompt, size, model, ref_paths=None):
-    exe = gpt_image_2_skill_executable()
-    if not exe:
+    command = gpt_image_2_skill_command()
+    if not command:
         return None
     ref_paths = [str(path) for path in (ref_paths or []) if path and os.path.isfile(str(path))]
     auth_file = gpt_image_2_skill_auth_file()
@@ -4779,10 +4852,7 @@ async def generate_codex_provider_image_via_gpt_image_2_skill(prompt, size, mode
     for attempt_index, (attempt_provider_args, attempt_provider) in enumerate(attempts):
         out_path = os.path.join(OUTPUT_OUTPUT_DIR, f"gpt_image_2_{uuid.uuid4().hex}.png")
         mode = "edit" if ref_paths else "generate"
-        args = [
-            exe,
-            "--json",
-        ]
+        args = [*command, "--json"]
         args.extend(attempt_provider_args)
         args.extend([
             "images",
@@ -12456,7 +12526,7 @@ async def ai_models():
 
 @app.get("/api/providers")
 async def api_providers():
-    return {"providers": public_api_providers()}
+    return {"providers": await public_api_providers_with_image_configuration()}
 
 @app.put("/api/providers")
 async def save_providers(payload: List[ApiProviderPayload]):
@@ -12517,7 +12587,7 @@ async def save_providers(payload: List[ApiProviderPayload]):
     if env_updates:
         update_env_values(env_updates)
         reload_env_globals()   # 立即将最新 env 值同步回模块全局变量，无需重启
-    return {"providers": [public_provider(p) for p in providers]}
+    return {"providers": await public_api_providers_with_image_configuration([public_provider(p) for p in providers])}
 
 # --- ModelScope Token (从 env 读取，不再支持通过 UI 修改) ---
 
@@ -13222,7 +13292,7 @@ async def build_online_image_result(payload: OnlineImageRequest):
         "images": local_urls,
         "image_items": local_items,
         "timestamp": time.time(),
-        "type": "online",
+        "type": payload.history_type,
         "model": model,
         "provider_id": provider["id"],
         "provider_name": provider.get("name") or provider["id"],
