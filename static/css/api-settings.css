@@ -54,23 +54,6 @@ body.studio-theme-dark .api-link-btn,
 html.studio-theme-dark body .api-link-btn { background:#f5f6f8; border-color:#f5f6f8; color:#0e1014; box-shadow:0 8px 18px rgba(0,0,0,.24); }
 body.studio-theme-dark .api-link-btn:hover,
 html.studio-theme-dark body .api-link-btn:hover { background:#ffffff; border-color:#ffffff; color:#05070b; }
-.cli-quick-group { display:flex; flex-direction:column; gap:8px; padding-top:4px; }
-.cli-quick-list { display:grid; grid-template-columns:1fr; gap:6px; }
-.cli-quick-btn { width:100%; min-height:34px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--muted); display:inline-flex; align-items:center; justify-content:flex-start; gap:8px; padding:0 10px; font-size:11.5px; font-weight:850; transition:all .15s ease; }
-.cli-quick-btn:hover { border-color:var(--line-strong); background:var(--soft); color:var(--text); }
-.cli-quick-btn i,
-.cli-quick-btn svg { flex:0 0 auto; color:currentColor; }
-.cli-quick-note {
-    margin:-2px 2px 4px 2px;
-    padding:5px 7px;
-    border:1px solid var(--line);
-    border-radius:8px;
-    background:var(--soft);
-    color:var(--muted);
-    font-size:9.5px;
-    line-height:1.45;
-    font-weight:650;
-}
 .recommend-api-body { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; padding:18px 20px 6px; }
 /* 推荐分组（稳定/便宜）：组容器占满整行，组内卡片继续两列 */
 .recommend-group { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
@@ -2493,6 +2476,42 @@ html.studio-theme-dark body .recommend-note {
 
 .provider-side-meta {
     min-width:38px;
+}
+
+.provider-configured-check {
+    width:18px;
+    height:18px;
+    border-radius:999px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    color:#16a34a;
+    background:#ecfdf3;
+    border:1px solid #86efac;
+}
+
+.provider-configured-check svg {
+    width:13px;
+    height:13px;
+    stroke-width:2.5;
+}
+
+.provider-card-banner {
+    position:relative;
+}
+
+.provider-card-banner .provider-configured-check {
+    position:absolute;
+    top:50%;
+    right:10px;
+    transform:translateY(-50%);
+}
+
+body.studio-theme-dark .provider-configured-check,
+html.studio-theme-dark body .provider-configured-check {
+    color:#4ade80;
+    background:rgba(22,163,74,.16);
+    border-color:rgba(74,222,128,.55);
 }
 
 :root {

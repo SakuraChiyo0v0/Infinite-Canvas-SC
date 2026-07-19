@@ -17,12 +17,12 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.07.15.1782696751"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.07.15.1782696749"></script>
-    <script src="/static/js/theme.js?v=2026.07.15.1783117645"></script>
-    <script src="/static/js/i18n.js?v=2026.07.15.1783116068"></script>
-    <script src="/static/js/image-preview.js?v=2026.07.15.1782696713"></script>
-    <script src="/static/js/history-bulk-manager.js?v=2026.07.15.1782696703"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.07.17.1784453321"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.07.17.1784453321"></script>
+    <script src="/static/js/theme.js?v=2026.07.17.1784453321"></script>
+    <script src="/static/js/i18n.js?v=2026.07.17.1784453321"></script>
+    <script src="/static/js/image-preview.js?v=2026.07.17.1784453321"></script>
+    <script src="/static/js/history-bulk-manager.js?v=2026.07.17.1784453321"></script>
     <style>
         :root {
             --bg-base: #f8f8f8;
@@ -92,7 +92,7 @@
             padding: 4px;
             border-radius: 14px;
             display: flex;
-            width: 260px;
+            width: 360px;
         }
 
         .mode-btn {
@@ -116,7 +116,7 @@
         .mode-glider {
             position: absolute;
             height: calc(100% - 8px);
-            width: calc(50% - 4px);
+            width: calc((100% - 8px) / 3);
             background: #fff;
             border-radius: 11px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
@@ -175,7 +175,7 @@
             display: none;
         }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.07.15.1782696682">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.07.17.1784453321">
 </head>
 
 <body class="antialiased">
@@ -213,7 +213,16 @@
                                     <i data-lucide="cloud" class="w-3 h-3"></i>
                                     <span>ModelScope</span>
                                 </div>
+                                <div id="modeCli" class="mode-btn flex items-center justify-center gap-1.5"
+                                    onclick="switchEngine('cli')">
+                                    <i data-lucide="terminal" class="w-3 h-3"></i>
+                                    <span>CLI</span>
+                                </div>
                                 <div id="glider" class="mode-glider"></div>
+                            </div>
+                            <div id="cliProviderWrap" class="hidden mt-2">
+                                <select id="cliProviderSelect" class="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[10px] font-bold text-gray-700 outline-none" onchange="selectCliProvider(this.value)"></select>
+                                <div id="cliProviderHint" class="mt-1 text-[9px] font-medium text-gray-400"></div>
                             </div>
                         </div>
 
@@ -289,6 +298,11 @@
     <script>
         lucide.createIcons();
         function tr(key){ return window.StudioI18n ? StudioI18n.t(key) : key; }
+        function escapeHtml(value) {
+            const node = document.createElement('span');
+            node.textContent = String(value ?? '');
+            return node.innerHTML;
+        }
         function applyLanguage(lang){
             if(lang && window.StudioI18n) StudioI18n.set(lang);
             document.title = tr('nav.textToImage');
@@ -298,6 +312,7 @@
         }
         window.addEventListener('message', event => {
             if(event.data?.type === 'studio-lang') applyLanguage(event.data.lang);
+            if(event.data?.type === 'providers-changed') loadCliImageProviders();
         });
         window.addEventListener('studio-lang-change', () => { document.title = tr('nav.textToImage'); });
 
@@ -336,30 +351,85 @@
         let currentEngine = 'local';
         const MS_TOKEN_KEY = 'modelscope_api_token';
         const ENGINE_MODE_KEY = 'zimage_engine_mode';
+        const CLI_PROVIDER_KEY = 'zimage_cli_provider_id';
+        let cliImageProviders = [];
+        let selectedCliProviderId = localStorage.getItem(CLI_PROVIDER_KEY) || '';
 
         // 1. Token handled via index.html sidebar
 
         // 2. 切换引擎逻辑
+        function cliProviderById(providerId = selectedCliProviderId) {
+            return cliImageProviders.find(item => item.id === providerId) || null;
+        }
+
+        function eligibleCliImageProviders(providers) {
+            if (!Array.isArray(providers)) return [];
+            return providers.filter(item => item?.enabled !== false
+                && item.image_configured === true
+                && Array.isArray(item.image_models)
+                && item.image_models.length > 0);
+        }
+
+        function renderCliProviderSelector() {
+            const wrap = document.getElementById('cliProviderWrap');
+            const select = document.getElementById('cliProviderSelect');
+            const hint = document.getElementById('cliProviderHint');
+            if (!wrap || !select || !hint) return;
+            const isCli = currentEngine === 'cli';
+            wrap.classList.toggle('hidden', !isCli);
+            if (!isCli) return;
+            if (!cliImageProviders.length) {
+                select.disabled = true;
+                select.innerHTML = '<option>未配置可用图像 API</option>';
+                hint.textContent = '请先在 API 设置中启用图像 API，并配置图像模型。';
+                return;
+            }
+            if (!cliProviderById()) selectedCliProviderId = cliImageProviders[0].id;
+            select.disabled = false;
+            select.innerHTML = cliImageProviders.map(item => {
+                const model = item.image_models?.[0] || '';
+                return `<option value="${escapeHtml(item.id)}" ${item.id === selectedCliProviderId ? 'selected' : ''}>${escapeHtml(item.name || item.id)} · ${escapeHtml(model)}</option>`;
+            }).join('');
+            hint.textContent = '仅显示 API 设置中已配置完成的图像 API。';
+        }
+
+        async function loadCliImageProviders() {
+            try {
+                const response = await fetch('/api/providers');
+                const data = await response.json();
+                cliImageProviders = eligibleCliImageProviders(data.providers || []);
+            } catch (error) {
+                cliImageProviders = [];
+            }
+            renderCliProviderSelector();
+        }
+
+        function selectCliProvider(providerId) {
+            selectedCliProviderId = providerId || '';
+            localStorage.setItem(CLI_PROVIDER_KEY, selectedCliProviderId);
+            renderCliProviderSelector();
+        }
+        window.selectCliProvider = selectCliProvider;
+
         function switchEngine(mode) {
+            mode = ['local', 'cloud', 'cli'].includes(mode) ? mode : 'local';
             currentEngine = mode;
             localStorage.setItem(ENGINE_MODE_KEY, mode); // Save state
 
             const glider = document.getElementById('glider');
             const localBtn = document.getElementById('modeLocal');
             const cloudBtn = document.getElementById('modeCloud');
+            const cliBtn = document.getElementById('modeCli');
             const btnText = document.getElementById('btnText');
-
-            if (mode === 'local') {
-                glider.style.transform = 'translateX(0)';
-                localBtn.classList.add('active');
-                cloudBtn.classList.remove('active');
-                btnText.innerText = tr('studio.renderLocal');
-            } else {
-                glider.style.transform = 'translateX(100%)';
-                cloudBtn.classList.add('active');
-                localBtn.classList.remove('active');
-                btnText.innerText = tr('studio.renderCloud');
-            }
+            const modes = ['local', 'cloud', 'cli'];
+            if (glider) glider.style.transform = `translateX(${modes.indexOf(mode) * 100}%)`;
+            localBtn?.classList.toggle('active', mode === 'local');
+            cloudBtn?.classList.toggle('active', mode === 'cloud');
+            cliBtn?.classList.toggle('active', mode === 'cli');
+            if (btnText) btnText.innerText = mode === 'local'
+                ? tr('studio.renderLocal')
+                : (mode === 'cloud' ? tr('studio.renderCloud') : 'Render CLI');
+            renderCliProviderSelector();
         }
 
         // Initialize Engine Mode
@@ -375,8 +445,10 @@
 
             if (currentEngine === 'local') {
                 runLocalTask(prompt);
-            } else {
+            } else if (currentEngine === 'cloud') {
                 runCloudTask(prompt);
+            } else {
+                runCliTask(prompt);
             }
         }
 
@@ -452,6 +524,39 @@
             } catch (e) {
                 placeholder.remove();
                 alert("Local render failed");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function runCliTask(prompt) {
+            const provider = cliProviderById();
+            if (!provider) {
+                renderCliProviderSelector();
+                return alert('请先在 API 设置中添加可用的 CLI 图像引擎。');
+            }
+            setLoading(true);
+            const placeholder = createPlaceholder(`${provider.name || provider.id} Rendering`);
+            document.getElementById('masonry').prepend(placeholder);
+            try {
+                const res = await fetch('/api/online-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt,
+                        provider_id: provider.id,
+                        model: provider.image_models[0],
+                        size: `${document.getElementById('width').value}x${document.getElementById('height').value}`,
+                        history_type: 'zimage'
+                    })
+                });
+                const data = await res.json();
+                placeholder.remove();
+                if (!res.ok || !data.images?.length) throw new Error(data.detail || 'CLI render failed');
+                renderImageCard(data, true);
+            } catch (error) {
+                placeholder.remove();
+                alert(error.message || 'CLI render failed');
             } finally {
                 setLoading(false);
             }
@@ -554,6 +659,7 @@
         }, { threshold: 0.1 });
 
         window.onload = () => {
+            loadCliImageProviders().then(() => switchEngine(currentEngine));
             loadHistory(0).then(() => {
                 window.HistoryBulkManager?.attach({masonry:'#masonry'});
                 const trigger = document.getElementById('loadMoreTrigger');

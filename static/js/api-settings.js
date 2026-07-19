@@ -2373,8 +2373,11 @@ function renderProviderList(){
     providerList.innerHTML = sortedProviders().map(item => {
         const active = item.id === selectedId ? 'active' : '';
         const itemProtocol = String(item.protocol || 'openai').toLowerCase();
-        const stateClass = item.enabled === false ? 'is-disabled' : (item.has_key || item.has_wallet_key || CLI_PROTOCOLS.has(itemProtocol) ? 'has-key' : 'missing-key');
+        const isCliProvider = CLI_PROTOCOLS.has(itemProtocol);
+        const stateClass = item.enabled === false ? 'is-disabled' : (item.image_configured ? 'has-key is-image-configured' : 'missing-key');
         const protocolLabel = item.id === 'runninghub' ? 'RH' : String(item.protocol || 'openai').toUpperCase();
+        const providerMeta = isCliProvider ? (item.image_configured ? '本机 CLI 已就绪' : '本机 CLI 未就绪') : (item.base_url || '未配置地址');
+        const configuredCheck = item.image_configured ? '<span class="provider-configured-check" title="已配置"><i data-lucide="circle-check" class="w-4 h-4"></i></span>' : '';
         if(item.id === 'modelscope'){
             return `
                 <button class="provider-card provider-card-banner ${active} ${stateClass}" type="button" onclick="selectProvider('${escapeHtml(item.id)}')">
@@ -2384,7 +2387,7 @@ function renderProviderList(){
                             <img src="/static/images/modelscope-1.gif" alt="ModelScope" class="ms-icon-dark">
                             <span class="provider-logo-fallback">ModelScope</span>
                         </span>
-                        <span class="provider-protocol-pill">OpenAI</span>
+                        <span class="provider-protocol-pill">OpenAI</span>${configuredCheck}
                     </span>
                 </button>
             `;
@@ -2398,7 +2401,7 @@ function renderProviderList(){
                             <img src="/static/images/RunningHub-W.png" alt="RunningHub" class="runninghub-icon ms-icon-dark">
                             <span class="provider-logo-fallback">RunningHub</span>
                         </span>
-                        <span class="provider-protocol-pill">RH</span>
+                        <span class="provider-protocol-pill">RH</span>${configuredCheck}
                     </span>
                 </button>
             `;
@@ -2412,7 +2415,7 @@ function renderProviderList(){
                             <img src="/static/images/volcengine-theme-dark.svg" alt="火山引擎" class="volcengine-icon ms-icon-dark">
                             <span class="provider-logo-fallback">火山引擎</span>
                         </span>
-                        <span class="provider-protocol-pill">Ark</span>
+                        <span class="provider-protocol-pill">Ark</span>${configuredCheck}
                     </span>
                 </button>
             `;
@@ -2423,10 +2426,10 @@ function renderProviderList(){
                 <span class="provider-mark"><i data-lucide="${item.has_key ? 'key-round' : 'key'}" class="w-4 h-4"></i></span>
                 <span class="provider-info">
                     <div class="provider-name">${escapeHtml(item.name || item.id)}</div>
-                    <div class="provider-meta">${escapeHtml(item.base_url || '未配置地址')}</div>
+                    <div class="provider-meta">${escapeHtml(providerMeta)}</div>
                 </span>
                 <span class="provider-side-meta">
-                    <span class="provider-status-dot"></span>
+                    ${configuredCheck}
                     <span class="provider-protocol-pill">${escapeHtml(protocolLabel)}</span>
                 </span>
             </button>
@@ -3520,59 +3523,6 @@ function addProvider(){
     providers.push({id, name:'API', base_url:'', protocol:'openai', image_request_mode:'openai', image_edit_route:'general', image_generation_endpoint:'', image_edit_endpoint:'', enabled:true, primary:false, image_models:[], chat_models:[], video_models:[], has_key:false, key_preview:''});
     selectedId = id;
     renderEditor();
-}
-async function addCliProvider(kind){
-    const preset = CLI_PROVIDER_PRESETS[kind];
-    if(!preset) return;
-    recommendInlineOpen = false;
-    syncRecommendView();
-    renderRecommendApi();
-    syncEditor();
-    let item = providers.find(provider => provider.id === preset.id);
-    if(!item) item = providers.find(provider => String(provider.protocol || '').toLowerCase() === preset.protocol);
-    if(!item){
-        item = {
-            id:preset.id,
-            name:preset.name,
-            base_url:'',
-            protocol:preset.protocol,
-            image_request_mode:'openai',
-            image_edit_route:'general',
-            image_generation_endpoint:'',
-            image_edit_endpoint:'',
-            enabled:true,
-            primary:false,
-            image_models:[],
-            chat_models:[],
-            video_models:[],
-            model_protocols:{},
-            has_key:false,
-            key_preview:''
-        };
-        providers.push(item);
-    }
-    item.id = preset.id;
-    item.name = item.name || preset.name;
-    item.base_url = '';
-    item.protocol = preset.protocol;
-    if(preset.protocol === 'jimeng'){
-        item.image_models = unique([...(item.image_models || []).filter(model => !JIMENG_LEGACY_IMAGE_MODELS.has(String(model || '').trim())), ...JIMENG_DEFAULT_IMAGE_MODELS]);
-        item.video_models = unique([...(item.video_models || []).filter(model => !JIMENG_LEGACY_VIDEO_MODELS.has(String(model || '').trim())), ...JIMENG_DEFAULT_VIDEO_MODELS]);
-        item.chat_models = unique(item.chat_models || []);
-    } else {
-        applyCliProtocolDefaults(item, preset.protocol);
-    }
-    selectedId = item.id;
-    renderProviderList();
-    renderEditor();
-    if(protocolInput) protocolInput.value = preset.protocol;
-    const ok = await saveProviders();
-    if(ok){
-        selectedId = item.id;
-        renderEditor();
-        if(protocolInput) protocolInput.value = preset.protocol;
-        setStatus(`${preset.name} 已添加，使用本机登录态，无需填写 API Key。`);
-    }
 }
 function deleteProvider(){
     const item = provider();
