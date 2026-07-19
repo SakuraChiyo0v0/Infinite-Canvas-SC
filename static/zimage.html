@@ -20,10 +20,10 @@
     <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.07.17.1784453321"></script>
     <script src="/static/vendor/js/lucide.js?v=2026.07.17.1784453321"></script>
     <script src="/static/js/theme.js?v=2026.07.17.1784453321"></script>
-    <script src="/static/js/i18n.js?v=2026.07.17.1784453321"></script>
+    <script src="/static/js/i18n.js?v=2026.07.19.192500"></script>
     <script src="/static/js/image-preview.js?v=2026.07.17.1784453321"></script>
     <script src="/static/js/history-bulk-manager.js?v=2026.07.17.1784453321"></script>
-    <script src="/static/js/cli-image-tools.js?v=2026.07.19.184500"></script>
+    <script src="/static/js/cli-image-tools.js?v=2026.07.19.192500"></script>
     <style>
         :root {
             --bg-base: #f8f8f8;
@@ -225,11 +225,8 @@
                                 <select id="cliProviderSelect" class="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[10px] font-bold text-gray-700 outline-none" onchange="selectCliProvider(this.value)"></select>
                                 <div id="cliProviderHint" class="mt-1 text-[9px] font-medium text-gray-400"></div>
                             </div>
+                            <div id="zimageSizeWrap" class="w-full max-w-sm"></div>
                         </div>
-
-                        <div id="zimageSizeWrap" class="w-full max-w-sm"></div>
-
-
                     </div>
 
                     <button id="mainGenBtn" onclick="handleRender()"
