@@ -8,6 +8,9 @@ const apiSettings = readFileSync(new URL('../static/js/api-settings.js', import.
 
 assert.match(zimage, /id="modeCli"/, 'zimage must expose a CLI engine source');
 assert.match(zimage, /id="cliProviderSelect"/, 'zimage must let the user select a configured CLI provider');
+assert.match(zimage, /id="zimageSizeWrap"/, 'zimage must expose shared output-size controls');
+assert.match(zimage, /createSizeControl\(/, 'zimage must initialize the shared output-size controls');
+assert.match(zimage, /size:\s*zimageSizeControl\.value\(\)/, 'zimage CLI requests must use the selected output size');
 assert.match(zimage, /fetch\('\/api\/providers'/, 'zimage must load configured providers');
 assert.match(zimage, /providers-changed[\s\S]*?loadCliImageProviders/, 'zimage must refresh CLI providers after API settings changes');
 assert.match(zimage, /function eligibleCliImageProviders\(providers\)[\s\S]*?item\.image_configured === true[\s\S]*?Array\.isArray\(item\.image_models\)[\s\S]*?item\.image_models\.length > 0/, 'zimage must select only configured image providers');
