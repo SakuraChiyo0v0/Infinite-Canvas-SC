@@ -1,0 +1,51 @@
+.prompt-workbench-page .asset-tabs { display:none; }
+.prompt-workbench-page { overflow:hidden; }
+.prompt-workbench-page .asset-page { overflow-x:auto; height:calc(100vh / var(--studio-ui-scale,1)) !important; min-height:0 !important; }
+.prompt-workbench-page .asset-manager-root > .asset-panel { min-height:0; }
+.prompt-workbench-page .asset-title { font-style:italic; letter-spacing:-.04em; }
+.prompt-workbench-page .asset-manager-root { grid-template-columns:minmax(150px,17%) minmax(210px,24%) minmax(360px,1fr); min-width:744px; }
+.pw-scroll { display:flex; flex:1; flex-direction:column; gap:16px; padding:20px; overflow:auto; min-height:0; }
+.pw-scroll > * { flex-shrink:0; }
+.pw-scroll label { display:flex; flex-direction:column; gap:7px; font-size:12px; font-weight:750; min-width:0; }
+.pw-scroll input,.pw-scroll select,.pw-scroll textarea { box-sizing:border-box; width:100%; border:1px solid var(--line); border-radius:12px; padding:10px 12px; color:var(--text); background:var(--card); font:inherit; }
+.pw-scroll textarea { line-height:1.7; font-weight:450; min-height:180px; resize:vertical; }
+.pw-scroll textarea:focus,.pw-scroll input:focus,.pw-scroll select:focus { outline:2px solid var(--muted); outline-offset:2px; }
+.pw-scroll h2 { font-size:20px; margin:0; overflow-wrap:anywhere; }
+.pw-note { color:var(--muted); font-size:12px; line-height:1.6; margin:0; overflow-wrap:anywhere; }
+.pw-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pw-row > label { flex:1; min-width:140px; }
+.pw-variables { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; max-height:280px; overflow:auto; padding:4px; margin-top:10px; }
+.pw-variables:empty { display:none; }
+.pw-variables input { font-weight:450; }
+.pw-preview { white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; font-size:13px; line-height:1.7; padding:12px; background:var(--soft); border-radius:12px; }
+.pw-scroll summary { cursor:pointer; font-size:12px; font-weight:750; padding:5px 0; }
+.pw-reference-list { display:flex; flex-wrap:wrap; gap:10px; }
+.pw-reference { position:relative; width:84px; }
+.pw-reference img { width:84px; height:84px; object-fit:contain; background:var(--soft); border-radius:10px; }
+.pw-reference button { position:absolute; right:0; top:0; border:0; border-radius:50%; cursor:pointer; background:var(--strong); color:var(--strong-text); }
+.pw-drop { border:1px dashed var(--line); border-radius:12px; padding:12px; }
+.pw-drop.drag-over { outline:2px solid var(--muted); }
+.pw-status { font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+.pw-status[data-error="true"] { color:#c34747; }
+.pw-generate { justify-content:center; width:100%; min-height:44px; }
+.pw-results { display:grid; gap:16px; }
+.pw-result { margin:0; border-top:1px solid var(--line); padding-top:16px; }
+.pw-result img { width:100%; max-height:440px; object-fit:contain; border-radius:12px; background:var(--soft); }
+.pw-result .pw-row { margin-top:10px; }
+.pw-result figcaption { margin-top:8px; font-size:11px; color:var(--muted); }
+.pw-scroll [hidden] { display:none; }
+.pw-scroll #pwTask { min-height:86px; }
+.pw-recipes { border:1px solid var(--line); border-radius:12px; padding:10px 12px; }
+.pw-recipes > * + * { margin-top:10px; }
+.pw-scroll label.pw-check { flex-direction:row; align-items:center; }
+.pw-scroll .pw-check input { width:auto; }
+.pw-result label { margin:12px 0 8px; }
+.pw-card-preview { position:relative; border-radius:10px; overflow:hidden; background:var(--soft); margin-bottom:10px; height:132px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; }
+.pw-card-preview img { width:100%; height:100%; object-fit:contain; }
+.pw-mode { position:absolute; bottom:6px; left:6px; border-radius:6px; padding:4px 7px; background:var(--card); color:var(--text); font-size:10px; font-weight:750; }
+.prompt-workbench-page .prompt-row-main { width:100%; min-width:0; }
+.prompt-workbench-page .prompt-row-scene { -webkit-line-clamp:1; }
+.prompt-workbench-page .prompt-row-text { -webkit-line-clamp:2; }
+.pw-recipes summary { margin:0; }
+.pw-character { display:flex; flex-direction:column; gap:10px; padding:12px; background:var(--soft); border-radius:12px; }
+[data-prompt-edit-start][hidden] { display:none!important; }

@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import prompt_workbench_store
 import prompt_library_order
+import character_library
 import subprocess
 import time
 import traceback
@@ -16182,6 +16183,7 @@ async def export_smart_canvas_group(payload: SmartCanvasGroupExportRequest):
 async def get_asset_library():
     return {"library": load_asset_library()}
 
+app.include_router(character_library.router(lambda: os.path.join(DATA_DIR, 'characters.json'), output_file_from_url))
 @app.get("/api/prompt-libraries")
 async def get_prompt_libraries():
     return {"library": public_prompt_libraries()}

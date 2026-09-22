@@ -16,10 +16,11 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/lucide.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/js/theme.js?v=2026.08.04.1785292593"></script>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.04.1785292588">
-    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.08.04.1785292586">
+    <script src="/static/vendor/js/lucide.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/theme.js?v=2026.08.28.1789976811"></script>
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.28.1789984628">
+    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.09.22.prompt-nav-1">
+    <link rel="stylesheet" href="/static/css/prompt-workbench.css?v=2026.08.28.1790055541">
 </head>
 <body>
     <div class="asset-page">
@@ -29,7 +30,7 @@
                 <div class="asset-sub">按库、分组、内容和预览管理素材与提示词。</div>
             </div>
             <div class="asset-head-actions">
-                <div id="assetStatus" class="asset-status">准备就绪</div>
+                <div id="assetStatus" class="asset-status" role="status">准备就绪</div>
                 <button id="storageSettingsBtn" class="asset-btn" type="button"><i data-lucide="settings"></i><span>偏好设置</span></button>
                 <button id="refreshBtn" class="asset-btn" type="button"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
             </div>
@@ -47,6 +48,9 @@
     </div>
 
     <input id="assetUploadInput" type="file" accept="image/*,video/*,audio/*,.json,.zip,application/json,application/zip" multiple hidden>
-    <script src="/static/js/asset-manager.js?v=2026.08.04.1785292590"></script>
+    <script src="/static/js/prompt-creation-core.js?v=2026.08.28.1790056256"></script>
+    <script src="/static/js/prompt-workbench.js?v=2026.08.28.1790055943"></script>
+    <script src="/static/js/prompt-library-dnd.js?v=2026.09.22.prompt-nav-1"></script>
+    <script src="/static/js/asset-manager.js?v=2026.09.22.prompt-nav-1"></script>
 </body>
 </html>

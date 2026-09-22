@@ -16,13 +16,13 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/js/theme.js?v=2026.08.04.1785292593"></script>
-    <script src="/static/js/touch-mouse.js?v=2026.08.04.1785292587"></script>
-    <script src="/static/js/i18n.js?v=2026.08.04.1785292592"></script>
-    <link rel="stylesheet" href="/static/css/canvas-list.css?v=2026.08.04.1785292587">
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.04.1785292588">
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/theme.js?v=2026.08.28.1789976811"></script>
+    <script src="/static/js/touch-mouse.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/i18n.js?v=2026.08.28.1790009024"></script>
+    <link rel="stylesheet" href="/static/css/canvas-list.css?v=2026.09.22.ux-audit">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.28.1789984628">
 </head>
 <body>
     <div id="workspace" class="workspace">
@@ -35,7 +35,7 @@
                 </button>
             </div>
             <div id="newProjectRow" class="ws-newproj-row">
-                <input id="newProjectInput" class="ws-newproj-input" type="text" maxlength="60" placeholder="项目名称">
+                <input id="newProjectInput" class="ws-newproj-input" type="text" maxlength="60" placeholder="项目名称" aria-label="项目名称">
                 <button id="newProjectConfirm" class="ws-mini-btn primary" type="button" title="确定" aria-label="确定"><i data-lucide="check" class="w-3.5 h-3.5"></i></button>
                 <button id="newProjectCancel" class="ws-mini-btn" type="button" title="取消" aria-label="取消"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
             </div>
@@ -64,6 +64,11 @@
                 </div>
             </div>
 
+            <div id="boardLoadError" class="ws-load-error" hidden>
+                <span id="boardLoadErrorText" role="alert"></span>
+                <button id="boardLoadRetry" class="ws-mini-btn" type="button">重试</button>
+            </div>
+
             <!-- Board (pan/zoom) -->
             <div id="board" class="ws-board">
                 <div id="boardWorld" class="ws-board-world"></div>
@@ -87,9 +92,9 @@
                 <div id="trashList" class="ws-trash-list"></div>
             </div>
 
-            <div id="boardStatus" class="ws-status"></div>
+            <div id="boardStatus" class="ws-status" role="status" aria-live="polite"></div>
         </main>
     </div>
-    <script src="/static/js/canvas-list.js?v=2026.08.04.1785292590"></script>
+    <script src="/static/js/canvas-list.js?v=2026.09.22.ux-audit"></script>
 </body>
 </html>

@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const requests=[], persisted={drafts:{},recipes:{},covers:{}};
+const storage=new Map();
+function harness(){
+ const listeners={},elements=new Map(); let key='';
+ const el=id=>{if(!elements.has(id))elements.set(id,{value:'',checked:true,textContent:'',innerHTML:'',dataset:{},focus(){}});return elements.get(id);};
+ const context=vm.createContext({console,setTimeout:(fn,ms)=>ms===0?setTimeout(fn,0):0,clearTimeout(){},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
+ document:{addEventListener:(t,f)=>listeners[t]=f,getElementById:el,querySelector:s=>s==='[data-pw-key]'?{dataset:{pwKey:key}}:el(s),querySelectorAll:()=>[]},
+ CustomEvent:class{constructor(t,o={}){this.type=t;this.detail=o.detail;}},dispatchEvent(){},location:{origin:'http://localhost:3000'},parent:{postMessage(){}},
+ fetch:async(url,o={})=>{const body=o.body?JSON.parse(o.body):null;requests.push({url,body});let data;
+ if(url==='/api/prompt-workbench')data=JSON.parse(JSON.stringify(persisted));
+ else if(url.startsWith('/api/prompt-workbench/')){const [, , ,kind,encoded]=url.split('/');const k=decodeURIComponent(encoded);assert.equal(body.revision,persisted[kind][k]?.revision||0);data=persisted[kind][k]={revision:body.revision+1,value:body.value};}
+ else if(url==='/api/canvas-image-tasks')data={task_id:'job'};
+ else if(url==='/api/canvas-image-tasks/job')data={status:'succeeded',result:{images:['/assets/output/test.png']}};
+ else throw Error(url);
+ return {ok:true,json:async()=>data};}
+ });
+ for(const f of ['prompt-creation-core','prompt-workbench'])vm.runInContext(fs.readFileSync(new URL(`../static/js/${f}.js`,import.meta.url),'utf8'),context);
+ return {w:context.PromptWorkbench,c:context.PromptCreation,el,render:(item,lib,text,p)=>{key=item.workbench_key || JSON.stringify([lib.id,item.id]);return context.PromptWorkbench.render(item,lib,text,p);},input:(id,value,dataset={})=>listeners.input({target:{id,value,dataset,closest:()=>true}}),click:s=>listeners.click({target:{closest:t=>t==='[data-pw-key]'||t===s?{}:null}})};
+}
+const h=harness(), providers=[{id:'gateway',image_configured:true,image_models:['image']}],item={id:'a',name:'模板'},lib={id:'mine'};
+await h.w.load();
+assert.equal(h.c.label('CHARACTER_NAME'),'角色名称');
+assert.equal(h.c.label('COLOR_2'),'主色 2');
+assert.equal(h.w.resolve('{{角色}}',{角色:'$&猫'}),'$&猫');
+const d={text:'画{{角色}}',values:{角色:'猫'},task:'红围巾',references:[],size:'1024x1536',options:h.w.modelOptions(providers),model:'["gateway","image"]'};
+assert.equal(h.w.requestBody(d).operation,'generate');assert.match(h.w.requestBody(d).prompt,/红围巾/);
+d.references=[{url:'/assets/ref.png'}];assert.equal(h.w.requestBody(d).operation,'edit');
+d.values={};assert.throws(()=>h.w.requestBody(d),/变量/);
+h.render(item,lib,'画{{角色}}',providers);h.input('', '猫',{pwVar:'角色'});h.input('pwTask','红围巾');h.click('[data-pw-generate]');h.click('[data-pw-generate]');
+for(let i=0;i<20;i++)await new Promise(r=>setImmediate(r));
+assert.equal(requests.filter(r=>r.url==='/api/canvas-image-tasks').length,1,'double click must not submit twice');
+assert.match(h.render(item,lib,'画{{角色}}',providers),/test.png/);
+const saved=JSON.parse(storage.get('prompt-workbench-backup:["mine","a"]')).value;
+assert.equal(saved.results[0].prompt,'画猫\n\n本次任务（与模板冲突时以此为准）：\n红围巾');
+persisted.drafts['["mine","a"]']={revision:99,value:saved};storage.clear();
+const reload=harness();await reload.w.load();assert.match(reload.render(item,lib,'画{{角色}}',providers),/test.png/);assert.match(reload.render(item,lib,'画{{角色}}',providers),/红围巾/);
+const movedItem={...item,workbench_key:'["mine","a"]'};
+assert.match(reload.render(movedItem,{id:'another-library'},'画{{角色}}',providers),/test.png/,'cross-library moves retain generated results');
+assert.match(reload.render(movedItem,{id:'another-library'},'画{{角色}}',providers),/红围巾/,'cross-library moves retain filled draft');
+h.el('pwRecipeName').value='常用';h.click('[data-pw-recipe-save]');for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r));
+const recipe=Object.values(persisted.recipes)[0].value;assert.equal(recipe.configuration.task,'红围巾');assert.equal(recipe.configuration.model,d.model);
+const recipeId=Object.keys(persisted.recipes)[0];h.el('pwRecipe').value=recipeId;h.input('pwTask','临时');h.click('[data-pw-recipe-apply]');assert.match(h.render(item,lib,'画{{角色}}',providers),/红围巾/);
+h.click('[data-pw-recipe-delete]');for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r));assert.equal(persisted.recipes[recipeId].value,null);
+storage.clear();persisted.drafts['["mine","pending"]']={revision:1,value:{...saved,results:[],pending:{taskId:'job',request:{prompt:'恢复任务',provider_id:'gateway',model:'image',size:'1024x1024',operation:'generate',reference_images:[]},source:{name:'恢复'},createdAt:1}}};
+const before=requests.filter(r=>r.url==='/api/canvas-image-tasks').length;
+const resume=harness();await resume.w.load();resume.render({id:'pending',name:'恢复'},lib,'恢复任务',providers);
+await new Promise(r=>setTimeout(r,10));for(let i=0;i<10;i++)await new Promise(r=>setImmediate(r));
+assert.equal(requests.filter(r=>r.url==='/api/canvas-image-tasks').length,before,'restoring pending task only polls, never submits');assert.match(resume.render({id:'pending',name:'恢复'},lib,'恢复任务',providers),/test.png/);
+const result={...saved.results[0],references:[{url:'/assets/ref.png'}]};const graph=h.c.canvasGraph(result,{width:1024,height:1536});assert.equal(graph.connections.length,2);assert.equal(graph.nodes.at(-1).images[0].provenance.prompt,result.prompt);result.prompt='changed';assert.notEqual(graph.nodes.at(-1).images[0].provenance.prompt,result.prompt);
+assert.match(h.c.revisionPrompt('旧画风','蓝围巾'),/旧画风[\s\S]*蓝围巾/);
+assert.equal(h.c.draftValue({...d,results:[],branchName:'分支名称'}).branchName,'分支名称');
+const character={id:'role1',name:'旅行者',description:'蓝围巾，成年角色',references:[{url:'/assets/character.png',name:'角色设定'}]};
+const roleDraft={...d,values:{角色:'旅行者'},character,references:[{url:'/assets/pose.png',name:'姿势参考'}]};
+const roleBody=h.w.requestBody(roleDraft);
+assert.equal(roleBody.operation,'edit');
+assert.equal(roleBody.reference_images.map(r=>r.url).join(','),'/assets/character.png,/assets/pose.png');
+assert.match(roleBody.prompt,/蓝围巾/);assert.match(roleBody.prompt,/不复刻三视图排版/);assert.match(roleBody.prompt,/红围巾/);
+const snapshot=h.c.draftValue({...roleDraft,results:[]});character.name='改名';
+assert.equal(snapshot.character.name,'旅行者','snapshot must not follow later profile edits');
+assert.throws(()=>h.w.requestBody({...roleDraft,references:[{url:'/assets/1.png'},{url:'/assets/2.png'},{url:'/assets/3.png'}]}),/最多 3 张/);
+const continued=h.w.requestBody({...roleDraft,useCharacterReferences:false,references:[{url:'/assets/result.png'}]});
+assert.equal(continued.reference_images.length,1);assert.equal(continued.reference_images[0].url,'/assets/result.png');
+const roleResult={...saved.results[0],character:snapshot.character};
+const meta=h.c.provenance(roleResult);roleResult.character.name='变更';assert.equal(meta.character.name,'旅行者');
+assert.throws(()=>h.w.requestBody({...roleDraft,text:'',task:''}),/填写提示词/);
+const roleHarness=harness();await roleHarness.w.load();
+const roleKey='["character","role1","template"]';
+const roleTemplate={id:'role-template',name:'角色模板',workbench_key:roleKey,character_context:{...character,name:'原角色'}};
+roleHarness.render(roleTemplate,lib,'画{{CHARACTER_NAME}}，保留黑发。',providers);
+roleHarness.click('[data-pw-generate]');
+roleTemplate.character_context.name='生成途中改名';
+for(let i=0;i<25;i++)await new Promise(r=>setImmediate(r));
+const roleSaved=JSON.parse(storage.get('prompt-workbench-backup:'+roleKey)).value;
+assert.equal(roleSaved.results[0].character.name,'原角色','submission locks profile snapshot');
+assert.equal(roleHarness.w.characterWorks('role1').length,1,'work is grouped by stable character id');
+assert.equal(roleSaved.results[0].references[0].url,'/assets/character.png');
+roleHarness.w.continueResult(roleSaved.results[0]);
+const continuing=JSON.parse(storage.get('prompt-workbench-backup:'+roleKey)).value;
+const continuingBody=roleHarness.w.requestBody({...continuing,options:h.w.modelOptions(providers),task:'换成粉色背景'});
+assert.equal(continuingBody.reference_images.length,1);
+assert.equal(continuingBody.reference_images[0].url,'/assets/output/test.png');
+assert.equal((continuingBody.prompt.match(/角色身份资料/g)||[]).length,1,'continuation must not repeatedly wrap identity blocks');
+console.log('prompt creation: variables, routing, single submission, persistence restoration, recipes and immutable provenance passed');

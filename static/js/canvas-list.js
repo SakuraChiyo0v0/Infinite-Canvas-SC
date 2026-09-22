@@ -63,6 +63,9 @@ const boardResetViewBtn = document.getElementById('boardResetView');
 const pasteCanvasBtn = document.getElementById('pasteCanvasBtn');
 const emptyCreateCanvasBtn = document.getElementById('emptyCreateCanvasBtn');
 const statusEl = document.getElementById('boardStatus');
+const loadErrorEl = document.getElementById('boardLoadError');
+const loadErrorText = document.getElementById('boardLoadErrorText');
+const loadRetryBtn = document.getElementById('boardLoadRetry');
 
 /* ===== State ===== */
 let projects = [];
@@ -72,6 +75,11 @@ let currentProjectId = rememberedProjectId();
 let pendingDeleteProjectId = null;
 let statusTimer = null;
 let clipboardCanvasId = null;   // 剪切的画布（切到别的项目后粘贴）
+let loading = false;
+let hasLoaded = false;
+let creatingProject = false;
+let creatingCanvas = false;
+let pastingCanvas = false;
 
 // board viewport (mirrors smart-canvas math)
 const viewport = { x: 0, y: 0, scale: 1 };
@@ -177,13 +185,17 @@ function currentProject(){ return projects.find(p => p.id === currentProjectId) 
 function canvasesInProject(pid){ return canvases.filter(c => (c.project || 'default') === pid); }
 
 async function loadAll(){
+    if(loading) return;
+    loading = true;
+    boardRefreshBtn.disabled = loadRetryBtn.disabled = true;
     try {
         const [pRes, cRes] = await Promise.all([
             fetch('/api/projects'),
             fetch('/api/canvases')
         ]);
-        const pData = pRes.ok ? await pRes.json() : { projects: [] };
-        const cData = cRes.ok ? await cRes.json() : { canvases: [] };
+        if(!pRes.ok || !cRes.ok) throw new Error('workspace load failed');
+        const [pData, cData] = await Promise.all([pRes.json(), cRes.json()]);
+        if(!Array.isArray(pData.projects) || !Array.isArray(cData.canvases)) throw new Error('invalid workspace data');
         projects = (pData.projects || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
         if(!projects.length) projects = [{ id: 'default', name: L('默认项目','Default'), order: 0, canvas_count: 0 }];
         canvases = cData.canvases || [];
@@ -193,13 +205,23 @@ async function loadAll(){
             currentProjectId = def ? def.id : 'default';
         }
         rememberProjectId(currentProjectId);
+        hasLoaded = true;
+        loadErrorEl.hidden = true;
         renderProjects();
         renderBoard();
         resetView();
         refreshTrashCount();
     } catch(e){
         console.error(e);
-        setStatus(L('加载失败','Load failed'));
+        loadErrorText.textContent = hasLoaded
+            ? L('刷新失败，仍显示上次加载的内容。','Refresh failed. Previously loaded content is still shown.')
+            : L('无法加载项目和画布，请重试。','Unable to load projects and canvases. Please retry.');
+        loadRetryBtn.textContent = L('重试','Retry');
+        loadErrorEl.hidden = false;
+        if(!hasLoaded) boardEmptyHint.classList.add('hidden');
+    } finally {
+        loading = false;
+        boardRefreshBtn.disabled = loadRetryBtn.disabled = false;
     }
 }
 
@@ -234,16 +256,18 @@ function renderProjects(){
         const count = projectCanvasCount(p.id);
         const isDefault = p.id === 'default';
         row.innerHTML = `
+            <button class="ws-project-select" type="button" aria-current="${p.id === currentProjectId ? 'true' : 'false'}">
             <span class="ws-project-icon"><i data-lucide="${isDefault ? 'folder' : 'folder-open'}" class="w-4 h-4"></i></span>
             <span class="ws-project-name">${escapeHtml(p.name)}</span>
             <span class="ws-project-count">${count}</span>
+            </button>
             <span class="ws-project-actions">
                 <button class="ws-proj-act rename" type="button" title="${L('重命名','Rename')}" aria-label="${L('重命名','Rename')}"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
                 ${isDefault ? '' : `<button class="ws-proj-act del" type="button" title="${L('删除','Delete')}" aria-label="${L('删除','Delete')}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>`}
             </span>`;
-        row.onclick = e => {
-            if(e.target.closest('.ws-proj-act')) return;
+        row.querySelector('.ws-project-select').onclick = () => {
             selectProject(p.id);
+            projectListEl.querySelector(`[data-project-id="${CSS.escape(p.id)}"] .ws-project-select`)?.focus();
         };
         const renameBtn = row.querySelector('.ws-proj-act.rename');
         if(renameBtn) renameBtn.onclick = e => { e.stopPropagation(); startProjectRename(p.id, row); };
@@ -268,18 +292,25 @@ function startProjectRename(pid, row){
     const p = projects.find(x => x.id === pid);
     if(!p) return;
     const nameEl = row.querySelector('.ws-project-name');
-    if(!nameEl || nameEl.querySelector('input')) return;
+    if(!nameEl || row.querySelector('.ws-project-name-input')) return;
     const input = document.createElement('input');
     input.type = 'text'; input.maxLength = 60; input.value = p.name;
+    input.setAttribute('aria-label', L('项目名称','Project name'));
     input.className = 'ws-project-name-input';
-    nameEl.replaceWith(input);
+    nameEl.closest('.ws-project-select').after(input);
+    nameEl.closest('.ws-project-select').hidden = true;
     input.focus(); input.select();
     input.onclick = e => e.stopPropagation();
     let done = false;
-    const finish = commit => {
+    const finish = async commit => {
         if(done) return; done = true;
         const v = input.value.trim();
-        if(commit && v && v !== p.name) renameProject(pid, v);
+        if(commit && v && v !== p.name){
+            input.disabled = true;
+            if(!await renameProject(pid, v)){
+                input.disabled = false; done = false; input.focus();
+            }
+        }
         else renderProjects();
     };
     input.onblur = () => finish(true);
@@ -292,17 +323,24 @@ function startProjectRename(pid, row){
 
 /* ===== Project CRUD ===== */
 function openNewProject(){
+    if(creatingProject) return;
     newProjectRow.classList.add('active');
     newProjectInput.value = '';
     newProjectInput.focus();
 }
 function closeNewProject(){
+    if(creatingProject) return;
     newProjectRow.classList.remove('active');
     newProjectInput.value = '';
+    newProjectRow.querySelector('.ws-create-error')?.remove();
+    newProjectBtn.focus();
 }
 async function createProject(){
+    if(creatingProject) return;
+    creatingProject = true;
     const name = newProjectInput.value.trim() || L('新项目','New project');
-    closeNewProject();
+    newProjectRow.querySelector('.ws-create-error')?.remove();
+    [newProjectInput, newProjectConfirm, newProjectCancel, newProjectBtn].forEach(el => el.disabled = true);
     try {
         const res = await fetch('/api/projects', {
             method: 'POST',
@@ -312,21 +350,25 @@ async function createProject(){
         if(!res.ok) throw new Error('create project failed');
         const data = await res.json();
         const proj = data.project;
+        if(!proj?.id) throw new Error('invalid project response');
         if(proj){
             projects.push(proj);
             projects.sort((a, b) => (a.order || 0) - (b.order || 0));
             selectProject(proj.id);
             renderProjects();
+            creatingProject = false;
+            closeNewProject();
         }
     } catch(e){
-        console.error(e); setStatus(L('创建项目失败','Create project failed'));
+        console.error(e);
+        showFormError(newProjectRow, L('创建失败，请重试。','Creation failed. Please retry.'));
+    } finally {
+        creatingProject = false;
+        [newProjectInput, newProjectConfirm, newProjectCancel, newProjectBtn].forEach(el => el.disabled = false);
     }
 }
 async function renameProject(pid, name){
     const p = projects.find(x => x.id === pid);
-    if(p) p.name = name;
-    renderProjects();
-    if(pid === currentProjectId) updateBoardHeader();
     try {
         const res = await fetch(`/api/projects/${encodeURIComponent(pid)}`, {
             method: 'POST',
@@ -334,7 +376,11 @@ async function renameProject(pid, name){
             body: JSON.stringify({ name })
         });
         if(!res.ok) throw new Error('rename project failed');
-    } catch(e){ console.error(e); setStatus(L('重命名失败','Rename failed')); loadAll(); }
+        if(p) p.name = name;
+        renderProjects();
+        if(pid === currentProjectId) updateBoardHeader();
+        return true;
+    } catch(e){ console.error(e); setStatus(L('重命名失败，请重试','Rename failed. Please retry.')); return false; }
 }
 async function deleteProject(pid){
     pendingDeleteProjectId = null;
@@ -400,7 +446,7 @@ function buildCard(c){
             <span class="ws-card-kind ${isSmart ? 'smart' : 'classic'}">${isSmart ? compactLabel('智能画布','智能','Smart') : compactLabel('普通画布','普通','Classic')}</span>
             <button class="ws-card-menu" type="button" title="${L('更多','More')}" aria-label="${L('更多','More')}"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button>
         </div>
-        <div class="ws-card-title">${escapeHtml(c.title)}</div>
+        <button class="ws-card-title" type="button" aria-label="${escapeAttr(L('打开画布：','Open canvas: ') + c.title)}">${escapeHtml(c.title)}</button>
         <div class="ws-card-meta">
             <span class="ws-card-nodes">${(c.node_count != null ? c.node_count : 0)} ${L('节点','nodes')}</span>
             <span class="ws-card-meta-dot"></span>
@@ -414,6 +460,10 @@ function buildCard(c){
             </div>
         </div>`;
     attachCardDrag(card, c);
+    card.querySelector('.ws-card-title').onclick = e => {
+        // Mouse opening is handled by drag detection; native keyboard activation has detail 0.
+        if(e.detail === 0) openCanvas(c);
+    };
     const menuBtn = card.querySelector('.ws-card-menu');
     menuBtn.onmousedown = e => e.stopPropagation();
     menuBtn.onclick = e => { e.stopPropagation(); openCardMenu(c.id, menuBtn); };
@@ -474,38 +524,69 @@ function openCanvas(c){
 /* ===== Card create flow ===== */
 let createCardEl = null;
 let createKind = 'classic';
-function closeCreateCard(){ createCardEl?.remove(); createCardEl = null; }
+let createTrigger = null;
+function closeCreateCard(){
+    if(creatingCanvas) return;
+    createCardEl?.remove(); createCardEl = null;
+    if(createTrigger?.isConnected) createTrigger.focus();
+    createTrigger = null;
+}
+function showFormError(form, text){
+    let error = form.querySelector('.ws-create-error');
+    if(!error){
+        error = document.createElement('p');
+        error.className = 'ws-create-error';
+        error.setAttribute('role', 'alert');
+        form.appendChild(error);
+    }
+    error.textContent = text;
+}
+function positionCreateCard(){
+    if(!createCardEl) return;
+    const rect = board.getBoundingClientRect();
+    const width = createCardEl.offsetWidth;
+    const height = createCardEl.offsetHeight;
+    createCardEl.style.left = Math.max(12, Math.min(rect.left + (rect.width - width) / 2, window.innerWidth - width - 12)) + 'px';
+    createCardEl.style.top = Math.max(12, Math.min(rect.top + (rect.height - height) / 2, window.innerHeight - height - 12)) + 'px';
+}
 function openCreateCard(worldPt){
+    if(creatingCanvas) return;
     closeCreateCard();
     closeCardMenu();
     createKind = 'classic';
     const el = document.createElement('div');
     el.className = 'ws-create-card';
-    el.style.left = worldPt.x + 'px';
-    el.style.top = worldPt.y + 'px';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', L('新建画布','New canvas'));
+    const projectId = currentProjectId;
+    createTrigger = document.activeElement;
     el.innerHTML = `
         <div class="ws-create-title">${L('新建画布','New canvas')}</div>
-        <input class="ws-create-input" type="text" maxlength="80" placeholder="${L('画布名称（可留空）','Canvas name (optional)')}">
+        <input class="ws-create-input" type="text" maxlength="80" aria-label="${L('画布名称（可留空）','Canvas name (optional)')}" placeholder="${L('画布名称（可留空）','Canvas name (optional)')}">
         <div class="ws-create-toggle">
-            <button class="ws-create-toggle-btn active" type="button" data-kind="classic">${L('普通画布','Classic')}</button>
-            <button class="ws-create-toggle-btn" type="button" data-kind="smart">${L('智能画布','Smart')}</button>
+            <button class="ws-create-toggle-btn active" type="button" aria-pressed="true" data-kind="classic">${L('普通画布','Classic')}</button>
+            <button class="ws-create-toggle-btn" type="button" aria-pressed="false" data-kind="smart">${L('智能画布','Smart')}</button>
         </div>
         <div class="ws-create-actions">
             <button class="ws-create-confirm" type="button">${L('创建','Create')}</button>
             <button class="ws-create-cancel" type="button">${L('取消','Cancel')}</button>
         </div>`;
-    boardWorld.appendChild(el);
+    document.body.appendChild(el);
     createCardEl = el;
+    positionCreateCard();
     el.addEventListener('mousedown', e => e.stopPropagation());
     const input = el.querySelector('.ws-create-input');
     input.focus();
     el.querySelectorAll('.ws-create-toggle-btn').forEach(btn => {
         btn.onclick = () => {
             createKind = btn.dataset.kind;
-            el.querySelectorAll('.ws-create-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+            el.querySelectorAll('.ws-create-toggle-btn').forEach(b => {
+                b.classList.toggle('active', b === btn);
+                b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+            });
         };
     });
-    const confirm = () => createCanvasOnBoard(input.value.trim(), createKind, worldPt);
+    const confirm = () => createCanvasOnBoard(input.value.trim(), createKind, worldPt, projectId);
     el.querySelector('.ws-create-confirm').onclick = confirm;
     el.querySelector('.ws-create-cancel').onclick = closeCreateCard;
     input.onkeydown = e => {
@@ -515,11 +596,16 @@ function openCreateCard(worldPt){
     };
 }
 
-async function createCanvasOnBoard(title, kind, worldPt){
+async function createCanvasOnBoard(title, kind, worldPt, projectId = currentProjectId){
+    if(creatingCanvas) return;
+    creatingCanvas = true;
+    const form = createCardEl;
+    form?.querySelector('.ws-create-error')?.remove();
+    form?.querySelectorAll('button,input').forEach(el => el.disabled = true);
+    form?.setAttribute('aria-busy', 'true');
     const isSmart = kind === 'smart';
     const base = isSmart ? L('智能画布','Smart canvas') : L('画布','Canvas');
     const name = title || `${base} ${new Date().toLocaleTimeString(langIsEn() ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
-    closeCreateCard();
     try {
         const res = await fetch('/api/canvases', {
             method: 'POST',
@@ -528,7 +614,7 @@ async function createCanvasOnBoard(title, kind, worldPt){
                 title: name,
                 icon: isSmart ? 'sparkles' : '🧩',
                 kind: isSmart ? 'smart' : 'classic',
-                project: currentProjectId,
+                project: projectId,
                 board_x: Math.round(worldPt.x),
                 board_y: Math.round(worldPt.y)
             })
@@ -536,15 +622,25 @@ async function createCanvasOnBoard(title, kind, worldPt){
         if(!res.ok) throw new Error('create canvas failed');
         const data = await res.json();
         const nc = data.canvas;
+        if(!nc?.id) throw new Error('invalid canvas response');
         if(nc){
-            if(nc.project == null) nc.project = currentProjectId;
+            if(nc.project == null) nc.project = projectId;
             if(nc.board_x == null) nc.board_x = Math.round(worldPt.x);
             if(nc.board_y == null) nc.board_y = Math.round(worldPt.y);
             canvases.push(nc);
             renderBoard();
             renderProjects();
+            creatingCanvas = false;
+            closeCreateCard();
         }
-    } catch(e){ console.error(e); setStatus(L('创建失败','Create failed')); }
+    } catch(e){
+        console.error(e);
+        if(form){ showFormError(form, L('创建失败，请重试。','Creation failed. Please retry.')); positionCreateCard(); }
+    } finally {
+        creatingCanvas = false;
+        form?.querySelectorAll('button,input').forEach(el => el.disabled = false);
+        form?.setAttribute('aria-busy', 'false');
+    }
 }
 
 /* ===== Card context menu (rename / delete / move) ===== */
@@ -796,13 +892,22 @@ function updatePasteBtn(){
     pasteCanvasBtn.style.display = show ? 'inline-flex' : 'none';
 }
 async function pasteCanvas(){
-    if(!clipboardCanvasId) return;
+    if(!clipboardCanvasId || pastingCanvas) return;
     const c = canvases.find(x => x.id === clipboardCanvasId);
     const targetPid = currentProjectId;
-    clipboardCanvasId = null;
-    if(!c){ updatePasteBtn(); renderBoard(); return; }
-    if((c.project || 'default') === targetPid){ renderBoard(); setStatus(L('已在当前项目','Already in this project')); return; }
-    await moveCanvasToProject(c.id, targetPid);
+    if(!c){ clipboardCanvasId = null; updatePasteBtn(); renderBoard(); return; }
+    if((c.project || 'default') === targetPid){ setStatus(L('已在当前项目','Already in this project')); return; }
+    pastingCanvas = true;
+    pasteCanvasBtn.disabled = true;
+    try {
+        if(await moveCanvasToProject(c.id, targetPid)){
+            if(clipboardCanvasId === c.id) clipboardCanvasId = null;
+            renderBoard();
+        }
+    } finally {
+        pastingCanvas = false;
+        pasteCanvasBtn.disabled = false;
+    }
 }
 
 function startCardRename(canvasId){
@@ -813,16 +918,22 @@ function startCardRename(canvasId){
     if(!titleEl || titleEl.querySelector('input')) return;
     const input = document.createElement('input');
     input.type = 'text'; input.maxLength = 80; input.value = c.title || '';
+    input.setAttribute('aria-label', L('画布名称','Canvas name'));
     input.className = 'ws-card-title-input';
-    titleEl.innerHTML = ''; titleEl.appendChild(input);
+    titleEl.replaceWith(input);
     input.onmousedown = e => e.stopPropagation();
     input.onclick = e => e.stopPropagation();
     input.focus(); input.select();
     let done = false;
-    const finish = commit => {
+    const finish = async commit => {
         if(done) return; done = true;
         const v = input.value.trim();
-        if(commit && v && v !== c.title) setCanvasTitle(canvasId, v);
+        if(commit && v && v !== c.title){
+            input.disabled = true;
+            if(!await setCanvasTitle(canvasId, v)){
+                input.disabled = false; done = false; input.focus();
+            }
+        }
         else renderBoard();
     };
     input.onblur = () => finish(true);
@@ -834,19 +945,17 @@ function startCardRename(canvasId){
 }
 
 async function setCanvasTitle(id, title){
-    const c = canvases.find(x => x.id === id);
-    if(c) c.title = title;
+    if(!await persistMeta(id, { title })) return false;
     renderBoard();
-    await persistMeta(id, { title });
+    return true;
 }
 
 async function moveCanvasToProject(id, projectId){
-    const c = canvases.find(x => x.id === id);
-    if(c) c.project = projectId;
+    if(!await persistMeta(id, { project: projectId })) return false;
     renderBoard();
     renderProjects();
     setStatus(L('已移动','Moved'));
-    await persistMeta(id, { project: projectId });
+    return true;
 }
 
 /* ===== Card meta persist (POST /meta) ===== */
@@ -859,11 +968,10 @@ async function persistMeta(id, patch){
         });
         if(!res.ok) throw new Error('meta save failed');
         const data = await res.json();
-        if(data.canvas){
-            const idx = canvases.findIndex(x => x.id === id);
-            if(idx >= 0) canvases[idx] = { ...canvases[idx], ...data.canvas };
-        }
-    } catch(e){ console.error(e); setStatus(L('保存失败','Save failed')); }
+        const idx = canvases.findIndex(x => x.id === id);
+        if(idx >= 0) canvases[idx] = { ...canvases[idx], ...patch, ...data.canvas };
+        return true;
+    } catch(e){ console.error(e); setStatus(L('保存失败，请重试','Save failed. Please retry.')); return false; }
 }
 
 /* ===== Delete canvas (soft -> trash, with confirm) ===== */
@@ -996,6 +1104,8 @@ emptyCreateCanvasBtn?.addEventListener('click', e => {
     openCreateCard(boardCenterWorld());
 });
 boardRefreshBtn.addEventListener('click', loadAll);
+loadRetryBtn.addEventListener('click', loadAll);
+window.addEventListener('resize', positionCreateCard);
 boardResetViewBtn.addEventListener('click', resetView);
 pasteCanvasBtn?.addEventListener('click', pasteCanvas);
 
