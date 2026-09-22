@@ -39,6 +39,21 @@ from fastapi.responses import FileResponse, Response, StreamingResponse, JSONRes
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 
+def configure_loopback_proxy_bypass():
+    # Windows system proxies can reach httpx without the system bypass list.
+    # Keep existing exclusions and external proxies; only change this process.
+    entries = []
+    for value in (os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", ""),
+                  "localhost,127.0.0.1,::1"):
+        for entry in value.split(","):
+            entry = entry.strip()
+            if entry and entry not in entries:
+                entries.append(entry)
+    os.environ["NO_PROXY"] = os.environ["no_proxy"] = ",".join(entries)
+
+
+configure_loopback_proxy_bypass()
+
 QUIET_ACCESS_PATHS = {
     "/api/queue_status",
     "/api/canvases",
