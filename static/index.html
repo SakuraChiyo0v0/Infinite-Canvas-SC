@@ -1270,6 +1270,10 @@
                         </svg>
                         <span class="nav-text" data-i18n="nav.imageEdit">图片编辑</span>
                     </button>
+                    <button type="button" class="nav-item" onclick="switchUI(this, 'prompt-reverse')" title="提示词反推">
+                        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="3"></rect><circle cx="10" cy="10" r="3"></circle><path d="m13 13 7 7M19 4h2M20 3v2"></path></svg>
+                        <span class="nav-text">提示词反推</span>
+                    </button>
                     <button type="button" class="nav-item" onclick="switchUI(this, 'enhance')">
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -1404,6 +1408,7 @@
             <iframe id="frame-zimage" title="文生图" data-src="/static/online.html?v=2026.09.22.ux1" class="active" scrolling="yes"></iframe>
             <iframe id="frame-enhance" title="细节增强" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/enhance.html?v=2026.08.28.1790009071" scrolling="yes"></iframe>
             <iframe id="frame-klein" title="图片编辑" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/klein.html?v=2026.08.28.1790055231" scrolling="yes"></iframe>
+            <iframe id="frame-prompt-reverse" title="提示词反推" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/prompt-reverse.html?v=2026.08.28.1790055231" scrolling="yes"></iframe>
             <iframe id="frame-angle" title="角度控制" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/angle.html?v=2026.08.28.1790044031" scrolling="yes"></iframe>
             <iframe id="frame-gpt-chat" title="GPT 对话" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/gpt-chat.html?v=2026.08.28.1790009071" scrolling="yes"></iframe>
             <iframe id="frame-asset-manager" title="素材库" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/asset-manager.html?v=2026.09.22.ux-audit" scrolling="yes"></iframe>
@@ -1430,7 +1435,7 @@
         const SIDEBAR_SETTINGS_COLLAPSED_KEY = 'studio_sidebar_settings_collapsed_v2';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'zimage';
-        const PAGE_IDS = ['zimage','klein','enhance','angle','gpt-chat','canvas','asset-manager','api-settings','comfyui-settings'];
+        const PAGE_IDS = ['zimage','klein','prompt-reverse','enhance','angle','gpt-chat','canvas','asset-manager','api-settings','comfyui-settings'];
         const PROJECT_URL = 'https://github.com/SakuraChiyo0v0/Infinite-Canvas-SC';
         let appInfo = { version:'', repo_url:PROJECT_URL };
 

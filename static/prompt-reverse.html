@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>提示词反推</title>
+<link rel="icon" href="/static/images/logo.png"><link rel="stylesheet" href="/static/css/prompt-reverse.css?v=2026.08.28.1790060348">
+<script src="/static/js/theme.js?v=2026.08.28.1789976811"></script><script src="/static/js/reverse-prompt-save.js?v=2026.08.28.1790045791" defer></script><script src="/static/js/prompt-reverse.js?v=2026.08.28.1790045823" defer></script>
+</head>
+<body>
+<main class="reverse-page">
+<header><h1>PROMPT REVERSE <span>提示词反推</span></h1><p>从图片提取主体、画风与构图，变成可以继续创作的提示词。</p></header>
+<div class="reverse-grid">
+<section class="input-panel">
+<h2>01. 输入图片</h2>
+<label id="dropzone" class="dropzone" tabindex="0"><input id="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden><img id="sourceImage" alt="待反推图片" hidden><span id="uploadHint"><b>＋</b>点击或拖入一张图片<small>PNG / JPG / WebP / GIF · 最大 50 MB</small></span></label>
+<div class="image-info"><span id="imageName">尚未选择图片</span><button id="clearImage" type="button" disabled>移除</button></div>
+<label class="field">识图模型<select id="model"><option value="">正在加载模型…</option></select></label>
+<p class="muted">选择支持图片输入的对话模型；模型来自 API 设置。</p>
+<label class="field">重点描述 <span class="optional">选填</span><textarea id="focus" rows="2" placeholder="例如：重点分析线条、用色与画风，弱化人物身份。"></textarea></label>
+<button id="analyze" class="primary" disabled>开始反推</button>
+<p id="status" role="status" aria-live="polite"></p>
+</section>
+<section class="output-panel">
+<div class="result-heading"><h2>02. 提示词</h2><button id="copy" disabled>复制</button></div>
+<textarea id="result" aria-label="反推提示词" placeholder="反推结果会显示在这里，也可以直接编辑。正向描述与限制条件放在同一段中。"></textarea>
+<p class="muted">这是基于画面的近似描述，无法恢复原作者的原始提示词。</p>
+<div class="actions"><button id="useGenerate" disabled>用于文生图 ↗</button><button id="useEdit" disabled>用于图片编辑 ↗</button></div>
+<section id="savePanel" class="save-panel" aria-labelledby="saveHeading">
+<div class="save-heading"><h3 id="saveHeading">收进提示词库</h3><span class="muted">下次创作，直接取用</span></div>
+<div class="save-fields-grid"><label class="field">名称 <span class="optional">选填，留空自动命名</span><input id="promptName" maxlength="80" placeholder="有提示词后会自动建议名称"></label>
+<div class="save-destination"><label class="field">保存到<select id="library" disabled><option value="">正在加载提示词库…</option></select></label><label class="field">分组<select id="category" disabled><option value="">请先选择提示词库</option></select></label></div>
+</div><div class="save-footer"><button id="savePrompt" class="save-primary" disabled>保存到提示词库</button><p id="saveStatus" role="status" aria-live="polite">先反推一张图片，或在上方粘贴提示词。</p><button id="retryLibraries" hidden>重新加载</button></div>
+</section>
+</section>
+</div>
+</main>
+</body></html>
