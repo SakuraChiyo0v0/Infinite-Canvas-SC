@@ -38,5 +38,7 @@ assert.match(cliHelpers, /function eligibleProviders\(providers\)[\s\S]*?item\.i
 assert.doesNotMatch(cliHelpers, /BUILT_IN_REMOTE_PROVIDER_IDS|CLI_PROTOCOLS/, 'shared picker must not discard valid providers by protocol or provider ID');
 
 assert.match(enhance, /id="cliProviderSelect"/, 'enhancement must expose CLI provider selection');
-assert.match(klein, /id="cliBtn"/, 'image editing must expose a CLI engine source');
-assert.match(angle, /id="modeCli"/, 'angle control must expose a CLI engine source');
+for (const source of [enhance, klein, angle]) {
+  assert.match(source, /localModel:/, 'image tools must expose local models in the unified picker');
+  assert.doesNotMatch(source, /id="(?:cliBtn|cloudBtn|modeCli|modeCloud)"/, 'image tools must not ask users to select an engine source');
+}

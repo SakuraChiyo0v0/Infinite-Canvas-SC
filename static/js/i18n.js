@@ -1,5 +1,7 @@
 (function(){
-    const VERSION = '2026.07.19.size-i18n.1';
+    // 词条模块的缓存版本号：新增或修改 i18n 词条时必须同步提升，
+    // 否则浏览器会继续使用缓存中的旧词条（表现为界面直接显示 studio.xxx 这类 key）。
+    const VERSION = '2026.09.22.optional-local';
     const scripts = [
         '/static/js/i18n-core.js',
         '/static/js/i18n/common.js',

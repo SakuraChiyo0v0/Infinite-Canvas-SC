@@ -4,7 +4,7 @@
     function escapeHtml(value) {
         const node = document.createElement('span');
         node.textContent = String(value ?? '');
-        return node.innerHTML;
+        return node.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function t(key, fallback) {
@@ -13,7 +13,7 @@
 
     function eligibleProviders(providers) {
         if (!Array.isArray(providers)) return [];
-        return providers.filter(item => item?.enabled !== false
+        return providers.filter(item => item?.enabled !== false && !['modelscope','runninghub','volcengine'].includes(item.id)
             && item.image_configured === true
             && Array.isArray(item.image_models)
             && item.image_models.length > 0);
@@ -24,120 +24,90 @@
         stylesInstalled = true;
         const style = document.createElement('style');
         style.textContent = `
+            /* 共享控件尺寸与字号统一走 theme.css 的 --ui-* 变量 */
             .cli-provider-picker { position: relative; }
-            .cli-provider-trigger { width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border: 1px solid #dbe2ec; border-radius: 10px; background: #fff; color: #334155; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1.25; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
-            .cli-provider-trigger:hover, .cli-provider-trigger[aria-expanded="true"] { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(148, 163, 184, .15); }
-            .cli-provider-trigger:disabled { color: #94a3b8; cursor: not-allowed; background: #f8fafc; }
+            .cli-provider-trigger { width: 100%; min-height: var(--ui-control-h, 40px); display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--ui-border, #e4e4e7); border-radius: var(--ui-radius-input, 8px); background: var(--ui-panel, #fff); color: var(--ui-text, #18181b); font-family: inherit; font-size: var(--ui-font-body, 14px); font-weight: 600; line-height: 1.3; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
+            .cli-provider-trigger:hover, .cli-provider-trigger[aria-expanded="true"] { border-color: var(--ui-accent, #4f46e5); }
+            .cli-provider-trigger:focus-visible { outline: none; box-shadow: var(--ui-focus-ring, 0 0 0 3px rgba(79, 70, 229, .28)); }
+            .cli-provider-trigger:disabled { color: var(--ui-text-3, #71717a); cursor: not-allowed; background: var(--ui-panel-soft, #f1f3f5); }
             .cli-provider-caret { width: 12px; height: 12px; flex: 0 0 auto; transition: transform .15s ease; }
             .cli-provider-trigger[aria-expanded="true"] .cli-provider-caret { transform: rotate(180deg); }
-            .cli-provider-menu { position: absolute; z-index: 60; top: calc(100% + 5px); left: 0; right: 0; display: grid; gap: 3px; padding: 4px; border: 1px solid #dbe2ec; border-radius: 10px; background: #fff; box-shadow: 0 12px 26px rgba(15, 23, 42, .16); }
+            .cli-provider-menu { position: absolute; z-index: 60; top: calc(100% + 5px); left: 0; right: 0; display: grid; gap: 2px; padding: 4px; border: 1px solid var(--ui-border, #e4e4e7); border-radius: var(--ui-radius-input, 8px); background: var(--ui-panel, #fff); box-shadow: 0 12px 26px rgba(15, 23, 42, .16); max-height: 260px; overflow-y: auto; }
             .cli-provider-menu.hidden { display: none; }
-            .cli-provider-option { width: 100%; padding: 8px 9px; border: 0; border-radius: 7px; background: transparent; color: #475569; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1.25; text-align: left; cursor: pointer; }
-            .cli-provider-option:hover, .cli-provider-option[aria-selected="true"] { background: #eef2f7; color: #0f172a; }
-            .cli-provider-option[aria-selected="true"]::after { content: '✓'; float: right; color: #475569; }
-            html.studio-theme-dark .cli-provider-trigger, html.studio-theme-dark .cli-provider-menu { background: #1f2937; border-color: #475569; color: #e5e7eb; }
-            html.studio-theme-dark .cli-provider-trigger:disabled { background: #1f2937; color: #94a3b8; }
-            html.studio-theme-dark .cli-provider-option { color: #cbd5e1; }
-            html.studio-theme-dark .cli-provider-option:hover, html.studio-theme-dark .cli-provider-option[aria-selected="true"] { background: #334155; color: #fff; }
-            .cli-size-control { display: grid; gap: 7px; margin-top: 9px; padding-top: 9px; border-top: 1px solid #edf2f7; font-family: inherit; }
-            .cli-size-label { color: #94a3b8; font-family: inherit; font-size: 10px; font-weight: 700; line-height: 1.2; letter-spacing: .04em; }
+            .cli-provider-option { width: 100%; padding: 9px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text-2, #52525b); font-family: inherit; font-size: var(--ui-font-body, 14px); font-weight: 500; line-height: 1.35; text-align: left; cursor: pointer; }
+            .cli-provider-option:hover, .cli-provider-option[aria-selected="true"] { background: var(--ui-panel-soft, #f1f3f5); color: var(--ui-text, #18181b); }
+            .cli-provider-option[aria-selected="true"]::after { content: '✓'; float: right; color: var(--ui-accent, #4f46e5); }
+            .cli-size-control { display: grid; gap: 8px; margin-top: 4px; font-family: inherit; }
+            .cli-size-label { color: var(--ui-text-2, #52525b); font-family: inherit; font-size: var(--ui-font-label, 14px); font-weight: 600; line-height: 1.3; }
             .cli-size-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: start; }
             .cli-size-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-            .cli-size-select, .cli-size-custom { width: 100%; min-width: 0; max-width: 100%; height: 34px; border: 1px solid #edf2f7; border-radius: 14px; background: #f8fafc; color: #111827; outline: none; padding: 0 10px; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; }
+            .cli-size-select, .cli-size-custom { width: 100%; min-width: 0; max-width: 100%; height: var(--ui-control-h, 40px); border: 1px solid var(--ui-border, #e4e4e7); border-radius: var(--ui-radius-input, 8px); background: var(--ui-panel, #fff); color: var(--ui-text, #18181b); outline: none; padding: 0 10px; font-family: inherit; font-size: var(--ui-font-body, 14px); font-weight: 500; line-height: 1; }
+            .cli-size-select:focus-visible, .cli-size-custom:focus-visible { border-color: var(--ui-accent, #4f46e5); box-shadow: var(--ui-focus-ring, 0 0 0 3px rgba(79, 70, 229, .28)); }
             .cli-size-select { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .cli-size-select:disabled { opacity: .55; cursor: not-allowed; }
             .cli-size-pair { display: none; grid-template-columns: 1fr 1fr; gap: 6px; }
             .cli-size-field.custom .cli-size-pair { display: grid; }
             .cli-size-pair .cli-size-custom { display: block; }
-            .cli-size-summary { color: #94a3b8; font-family: inherit; font-size: 9px; font-weight: 600; line-height: 1.3; }
+            .cli-size-sub { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+            .cli-size-sub > span { color: var(--ui-text-3, #71717a); font-size: var(--ui-font-caption, 12px); font-weight: 500; line-height: 1.2; }
+            .cli-size-summary { color: var(--ui-text-3, #71717a); font-family: inherit; font-size: var(--ui-font-caption, 12px); font-weight: 500; line-height: 1.4; }
             @media (max-width: 640px) { .cli-size-row { grid-template-columns: 1fr; } }
-            html.studio-theme-dark .cli-size-control { border-color: #475569; }
-            html.studio-theme-dark .cli-size-select, html.studio-theme-dark .cli-size-custom { border-color: #475569; background: #1f2937; color: #cbd5e1; }
+            html.studio-theme-dark .cli-provider-trigger, html.studio-theme-dark .cli-provider-menu { background: var(--ui-panel, #1f2937); border-color: var(--ui-border, #475569); color: var(--ui-text, #e5e7eb); }
+            html.studio-theme-dark .cli-provider-trigger:disabled { background: var(--ui-panel-soft, #1f2937); color: var(--ui-text-3, #94a3b8); }
+            html.studio-theme-dark .cli-provider-option { color: var(--ui-text-2, #cbd5e1); }
+            html.studio-theme-dark .cli-provider-option:hover, html.studio-theme-dark .cli-provider-option[aria-selected="true"] { background: var(--ui-panel-soft, #334155); color: var(--ui-text, #fff); }
+            html.studio-theme-dark .cli-size-select, html.studio-theme-dark .cli-size-custom { border-color: var(--ui-border, #475569); background: var(--ui-panel, #1f2937); color: var(--ui-text, #cbd5e1); }
         `;
         document.head.appendChild(style);
     }
 
     function create(options) {
-        const { selectId, hintId, wrapId, storageKey } = options;
+        const {selectId, hintId, wrapId, storageKey, localModel, onChange} = options;
         let providers = [];
-        let active = false;
-        let selectedId = localStorage.getItem(storageKey) || '';
-
-        const selected = () => providers.find(item => item.id === selectedId) || null;
-
-        function closeMenu() {
-            const picker = document.getElementById(selectId);
-            picker?.querySelector('.cli-provider-menu')?.classList.add('hidden');
-            picker?.querySelector('.cli-provider-trigger')?.setAttribute('aria-expanded', 'false');
-        }
-
-        function render() {
-            const wrap = document.getElementById(wrapId);
-            const picker = document.getElementById(selectId);
-            const hint = document.getElementById(hintId);
-            if (!wrap || !picker || !hint) return;
-            wrap.classList.toggle('hidden', !active);
-            if (!active) return;
-            if (!providers.length) {
-                picker.innerHTML = `<button type="button" class="cli-provider-trigger" disabled><span>${escapeHtml(t('studio.noConfiguredImageApi', '未配置可用图像 API'))}</span><span class="cli-provider-caret">⌄</span></button>`;
-                hint.textContent = t('studio.configureImageApiHint', '请先在 API 设置中启用图像 API，并配置图像模型。');
-                return;
+        let selectedKey = localStorage.getItem(`${storageKey}:model`) || '';
+        const localEnabled = () => global.StudioImageCapabilities?.localEnabled() === true;
+        const choices = () => [
+            ...(localEnabled() ? [{id:'local-comfy', name:'本地 ComfyUI', image_models:[localModel], local:true}] : []),
+            ...providers.flatMap(p => p.image_models.map(model => ({...p, image_models:[model]})))
+        ];
+        const key = p => JSON.stringify([p.id, p.image_models[0]]);
+        const selected = () => choices().find(p => key(p) === selectedKey) || null;
+        function render(){
+            if (!selectedKey || (!localEnabled() && selectedKey.startsWith('["local-comfy",'))) {
+                const first = choices().find(p => !p.local) || choices()[0];
+                selectedKey = first ? key(first) : '';
+                if (selectedKey) localStorage.setItem(`${storageKey}:model`, selectedKey);
             }
-            if (!selected()) selectedId = providers[0].id;
-            const activeProvider = selected();
-            const activeLabel = `${activeProvider.name || activeProvider.id} · ${activeProvider.image_models?.[0] || ''}`;
-            picker.innerHTML = `<button type="button" class="cli-provider-trigger" aria-haspopup="listbox" aria-expanded="false"><span>${escapeHtml(activeLabel)}</span><svg class="cli-provider-caret" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg></button><div class="cli-provider-menu hidden" role="listbox">${providers.map(item => {
-                const label = `${item.name || item.id} · ${item.image_models?.[0] || ''}`;
-                return `<button type="button" class="cli-provider-option" role="option" data-provider-id="${escapeHtml(item.id)}" aria-selected="${item.id === selectedId}">${escapeHtml(label)}</button>`;
-            }).join('')}</div>`;
-            hint.textContent = t('studio.configuredImageApiHint', '仅显示 API 设置中已配置完成的图像 API。');
-            const trigger = picker.querySelector('.cli-provider-trigger');
-            const menu = picker.querySelector('.cli-provider-menu');
-            trigger.addEventListener('click', () => {
-                const isOpen = !menu.classList.contains('hidden');
-                menu.classList.toggle('hidden', isOpen);
-                trigger.setAttribute('aria-expanded', String(!isOpen));
-            });
-            picker.querySelectorAll('.cli-provider-option').forEach(option => option.addEventListener('click', () => {
-                selectedId = option.dataset.providerId || '';
-                localStorage.setItem(storageKey, selectedId);
-                render();
-            }));
+            const wrap = document.getElementById(wrapId), picker = document.getElementById(selectId), hint = document.getElementById(hintId);
+            if(!wrap || !picker) return;
+            wrap.classList.remove('hidden');
+            picker.innerHTML = `<select class="cli-size-select" aria-label="模型">${selected() ? '' : '<option value="" selected disabled>原模型不可用，请重新选择</option>'}${choices().map(p => `<option value="${escapeHtml(key(p))}" ${key(p) === selectedKey ? 'selected' : ''}>${escapeHtml(p.image_models[0])} · ${escapeHtml(p.name || p.id)}</option>`).join('')}</select>`;
+            if(hint) hint.textContent = '';
+            picker.querySelector('select').onchange = event => {
+                selectedKey = event.target.value; localStorage.setItem(`${storageKey}:model`, selectedKey);
+                onChange?.(selected()?.local ? 'local' : 'cli');
+            };
         }
-
         installStyles();
-        async function refresh() {
+        async function refresh(){
             try {
                 const response = await fetch('/api/providers');
+                if(!response.ok) throw new Error('模型配置加载失败');
                 const data = await response.json();
                 providers = eligibleProviders(data.providers || []);
-            } catch (error) {
-                providers = [];
-            }
+            } catch(error) { console.warn('模型配置加载失败', error); }
             render();
+            onChange?.(selected()?.local ? 'local' : 'cli');
         }
-
-        document.addEventListener('click', event => {
-            const picker = document.getElementById(selectId);
-            if (picker && !picker.contains(event.target)) closeMenu();
-        });
-        window.addEventListener('message', event => {
-            if (event.data?.type === 'providers-changed') refresh();
-        });
+        window.addEventListener('message', event => { if(event.data?.type === 'providers-changed') refresh(); });
         window.addEventListener('studio-lang-change', render);
-
-        return {
-            refresh,
-            selected,
-            setActive(value) {
-                active = Boolean(value);
-                render();
-            }
-        };
+        window.addEventListener('studio-local-comfy-change', () => { render(); onChange?.(selected()?.local ? 'local' : 'cli'); });
+        return {refresh, selected, setActive(){ render(); }};
     }
 
     function createSizeControl(options) {
         const { wrapId, storageKey } = options;
+        const nativeSize = () => global.StudioImageCapabilities?.nativeResolution(options.getModel?.()) === true;
         const limits = { maxEdge: 3840, maxPixels: 8294400 };
         const ratios = {
             square: [1, 1],
@@ -180,7 +150,7 @@
         }
 
         function presetDimensions() {
-            const targetEdge = { '1k': 1024, '2k': 2048, '4k': 3840 }[resolution] || 1024;
+            const targetEdge = nativeSize() ? 1024 : ({ '1k': 1024, '2k': 2048, '4k': 3840 }[resolution] || 1024);
             const [ratioWidth, ratioHeight] = selectedRatio();
             const ratioEdge = Math.max(ratioWidth, ratioHeight);
             if (!ratioEdge) return fitToLimits(targetEdge, targetEdge);
@@ -189,7 +159,7 @@
         }
 
         function dimensions() {
-            return resolution === 'custom'
+            return !nativeSize() && resolution === 'custom'
                 ? fitToLimits(customWidth, customHeight)
                 : presetDimensions();
         }
@@ -225,7 +195,15 @@
             const unit = t('studio.pixels', '像素');
             const customPrefix = resolution === 'custom' ? `${t('studio.customSize', '自定义尺寸')} · ` : '';
             const sourcePrefix = hasSource && ratio === 'source' && resolution !== 'custom' ? `${t('studio.followSourceRatio', '跟随原图比例')} · ` : '';
-            wrap.innerHTML = `<div class="cli-size-control"><div class="cli-size-label">${escapeHtml(t('studio.outputSize', '输出尺寸'))}</div><div class="cli-size-row"><label class="cli-size-field${resolution === 'custom' ? ' custom' : ''}"><select class="cli-size-select" data-size-resolution aria-label="${escapeHtml(t('studio.resolution', '清晰度'))}">${resolutionOptions.map(([id, label]) => `<option value="${id}"${resolution === id ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select><span class="cli-size-pair"><input class="cli-size-custom" data-custom-width type="number" min="16" max="3840" step="1" aria-label="${escapeHtml(t('online.width', '自定义宽度'))}" value="${customWidth}"><input class="cli-size-custom" data-custom-height type="number" min="16" max="3840" step="1" aria-label="${escapeHtml(t('online.height', '自定义高度'))}" value="${customHeight}"></span></label><label class="cli-size-field${visibleRatio === 'custom' ? ' custom' : ''}"><select class="cli-size-select" data-size-ratio aria-label="${escapeHtml(t('studio.aspectRatio', '画幅'))}"${resolution === 'custom' ? ' disabled' : ''}>${ratioOptions.map(([id, label]) => `<option value="${id}"${visibleRatio === id ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select><span class="cli-size-pair"><input class="cli-size-custom" data-ratio-width type="number" min="1" step="1" aria-label="${escapeHtml(t('online.ratioWidth', '自定义比例宽度'))}" value="${customRatioWidth}"><input class="cli-size-custom" data-ratio-height type="number" min="1" step="1" aria-label="${escapeHtml(t('online.ratioHeight', '自定义比例高度'))}" value="${customRatioHeight}"></span></label></div><div class="cli-size-summary">${escapeHtml(customPrefix + sourcePrefix + value() + ' ' + unit)}</div></div>`;
+            wrap.innerHTML = `<div class="cli-size-control"><div class="cli-size-label">${escapeHtml(t('studio.outputSize', '输出尺寸'))}</div><div class="cli-size-row"><label class="cli-size-field${resolution === 'custom' ? ' custom' : ''}"><select class="cli-size-select" data-size-resolution aria-label="${escapeHtml(t('studio.resolution', '清晰度'))}">${resolutionOptions.map(([id, label]) => `<option value="${id}"${resolution === id ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select><span class="cli-size-pair"><label class="cli-size-sub"><span>${escapeHtml(t('online.width', '宽度'))}</span><input class="cli-size-custom" data-custom-width type="number" min="16" max="3840" step="1" aria-label="${escapeHtml(t('online.width', '宽度'))}" value="${customWidth}"></label><label class="cli-size-sub"><span>${escapeHtml(t('online.height', '高度'))}</span><input class="cli-size-custom" data-custom-height type="number" min="16" max="3840" step="1" aria-label="${escapeHtml(t('online.height', '高度'))}" value="${customHeight}"></label></span></label><label class="cli-size-field${visibleRatio === 'custom' ? ' custom' : ''}"><select class="cli-size-select" data-size-ratio aria-label="${escapeHtml(t('studio.aspectRatio', '画幅'))}"${resolution === 'custom' ? ' disabled' : ''}>${ratioOptions.map(([id, label]) => `<option value="${id}"${visibleRatio === id ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select><span class="cli-size-pair"><label class="cli-size-sub"><span>${escapeHtml(t('online.ratioWidth', '宽'))}</span><input class="cli-size-custom" data-ratio-width type="number" min="1" step="1" aria-label="${escapeHtml(t('online.ratioWidth', '宽'))}" value="${customRatioWidth}"></label><label class="cli-size-sub"><span>${escapeHtml(t('online.ratioHeight', '高'))}</span><input class="cli-size-custom" data-ratio-height type="number" min="1" step="1" aria-label="${escapeHtml(t('online.ratioHeight', '高'))}" value="${customRatioHeight}"></label></span></label></div><div class="cli-size-summary">${escapeHtml(customPrefix + sourcePrefix + value() + ' ' + unit)}</div></div>`;
+            if (nativeSize()) {
+                const resolutionField = wrap.querySelector('[data-size-resolution]').closest('label.cli-size-field');
+                resolutionField.hidden = true;
+                resolutionField.style.display = 'none';
+                wrap.querySelector('.cli-size-row').style.gridTemplateColumns = 'minmax(0, 1fr)';
+                wrap.querySelector('[data-size-ratio]').disabled = false;
+                wrap.querySelector('.cli-size-summary').textContent = '原生分辨率 · 画幅作为生成要求，实际尺寸以结果为准';
+            }
             wrap.querySelector('[data-size-resolution]').addEventListener('change', event => {
                 resolution = event.currentTarget.value || '1k';
                 persist();

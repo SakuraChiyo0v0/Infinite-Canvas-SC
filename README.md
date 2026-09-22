@@ -1,54 +1,27 @@
-# Infinite-Canvas
-Supports comfyui/API calls/modelscope calls
+# Infinite-Canvas-SC
 
-2026/08/28:
+支持 ComfyUI、API 和 CLI 的 AI 图像与画布工具。
 
-此项目已停更，全新版本请前往：www.DX-OS.com 下载。
+## 项目来源与致谢
 
-功能特性：
-1. 画布功能全新升级，支持Agent/一键分层/多人协同/共享画布/免费公网图床
-2. 软件内即可启动ComfyUI/映射工作流等
-3. 海量免费APP可下载
-4. 全新的账号管理/APP权限系统
-5. 提供开发者模式，可以开发自己公司的业务软件离线运行
+本项目基于 [hero8152（wuli大雄）的 Infinite-Canvas](https://github.com/hero8152/Infinite-Canvas) 二次开发，感谢原作者的开发与开源贡献。本仓库由我们独立维护，后续功能与界面调整以本仓库为准，不代表原作者版本。
 
------
+项目仓库：[Infinite-Canvas-SC](https://github.com/SakuraChiyo0v0/Infinite-Canvas-SC)。原项目许可证及使用限制继续保留，详见 [LICENSE](LICENSE)。
 
-
-配套的chrome采集插件已经上线：https://chromewebstore.google.com/detail/infinite-canvas-%E5%9B%BE%E5%83%8F%E8%A7%86%E9%A2%91%E6%96%87%E5%AD%97%E6%8A%93%E5%8F%96%E5%B7%A5/ajfhnbklbmpfaaookhfakohabnpmlcic?authuser=0&hl=en
-
-详细教程：[https://youtu.be/1y9ShTvgC_w](https://youtu.be/r_y_9ALr7fg)
-
-由于最近很多API网址关停，我找到一个稳定的网址：
-
-https://apib.ai/register?aff=1uyAbb （包含所有生图模型/视频模型/LLM模型）
-
-https://www.fhl.mom/register?aff=86L574B4T2N9  （包含codex和GPT image 2模型）
-
-功能请求/功能更新/视频教程/联系我，都可以在B站评论或私信：https://space.bilibili.com/78652351
-
-
-----
-
-【新增了version文件，我每次更新都会更新version的版本号，如果你下载version文件，打开项目后，导航栏的GitHub按键就会提示新版本，如果不想查看更新提示，就删除version文件】
-
-【A version file has been added. I update the version number with each update. If you download the version file, the GitHub button in the navigation bar will indicate the new version after opening the project. If you don't want to see update notifications, delete the version file.】
-
-----
+## 功能
 
 支持的功能：
 1. 支持几乎所有OpenAI协议的API/异步协议/Gemini协议/方舟协议
 2. RunningHub的工作流/AI应用/收费模型调用
 3. 火山引擎调用（人脸认证还在修复bug）
-4. Modelscope免费LLM模型和图像模型调用
-5. 即梦CLI调用，可直接调用即梦高级会员的积分，支持文生图/图生图/文生视频/图生视频
-6. 支持调用本地局域网的ComfyUI
-7. 扩展图片/360全景图预览截图/视频帧抽取/循环节点等诸多功能
-8. tools文件夹中，增加了chrome批量采集到素材库的插件，PS直连画布调用所有功能的插件
+4. 即梦CLI调用，可直接调用即梦高级会员的积分，支持文生图/图生图/文生视频/图生视频
+5. 支持调用本地局域网的ComfyUI
+6. 扩展图片/360全景图预览截图/视频帧抽取/循环节点等诸多功能
+7. tools文件夹中，增加了chrome批量采集到素材库的插件，PS直连画布调用所有功能的插件
 
 --------
 
-已经申请著作权，禁止商业用途
+原项目许可声明（保留）：禁止商业用途
 
 Commercial use is prohibited.
 

@@ -1,0 +1,21 @@
+.sidebar .side-actions { gap: 4px; margin-bottom: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.sidebar .side-actions .side-pill { border-color: transparent; border-radius: 8px; height: 36px; }
+.sidebar.is-pinned .side-actions > .side-pill { width: 184px; justify-content: flex-start; padding: 0 12px; }
+.sidebar.is-pinned .side-actions > .side-pill .side-pill-text { font-size: 13px; font-weight: 600; }
+.sidebar.is-pinned .settings-fold-chevron { margin-left: auto; }
+.sidebar .settings-fold-group { gap: 2px; }
+.sidebar .settings-fold-group.is-collapsed { display: none; }
+.sidebar .settings-fold-group:not(.is-collapsed) { max-height: 120px; }
+.sidebar .settings-fold-group .side-pill { height: 32px; }
+.sidebar.is-pinned .settings-fold-group .side-pill { width: 172px; justify-content: flex-start; padding: 0 8px; }
+.sidebar.is-pinned .settings-fold-group .side-pill-text { font-size: 12px; font-weight: 500; max-width: none; flex: 1; text-align: left; }
+.sidebar .setting-row { display: flex; align-items: center; gap: 6px; }
+.sidebar .setting-value { margin-left: auto; font-size: 11px; opacity: .75; }
+.sidebar .sidebar-footer { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 6px; }
+.sidebar .sidebar-footer #github-entry-btn { height: 28px; }
+.sidebar .sidebar-footer .project-version-badge { border: 0; background: transparent; }
+.sidebar.is-pinned .sidebar-footer { width: 184px; flex-direction: row; gap: 0; justify-content: space-between; padding: 0 8px; }
+.sidebar.is-pinned .sidebar-footer #github-entry-btn { width: auto; flex: 0 0 auto; gap: 6px; font-size: 11px; }
+.sidebar.is-pinned .sidebar-footer #github-entry-btn svg { width: 13px; height: 13px; }
+.sidebar.is-pinned .sidebar-footer #github-entry-btn .side-pill-text { font-size: 11px; font-weight: 500; }
+.sidebar.is-pinned .sidebar-footer .project-version-badge { width: auto; font-size: 10px; }

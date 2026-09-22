@@ -6,7 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/logo.png" type="image/png">
     <title>Flux Klein | 极简一体化终端</title>
-    <script>
+    <script src="/static/js/image-capabilities.js?v=2026.08.28.1790008596"></script>
+    <link rel="stylesheet" href="/static/css/prompt-library-picker.css?v=2026.08.28.1790010587">
+    <script src="/static/js/prompt-library-picker.js?v=2026.08.28.1790043937" defer></script>
+<script>
         (function(){
             try {
                 var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'light';
@@ -17,15 +20,15 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/js/theme.js?v=2026.08.04.1785292593"></script>
-    <script src="/static/js/i18n.js?v=2026.08.04.1785292592"></script>
-    <script src="/static/js/image-preview.js?v=2026.08.04.1785292584"></script>
-    <script src="/static/js/history-bulk-manager.js?v=2026.08.04.1785292584"></script>
-    <script src="/static/js/cli-image-tools.js?v=2026.07.19.192500"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/theme.js?v=2026.08.28.1789976811"></script>
+    <script src="/static/js/i18n.js?v=2026.08.28.1790009024"></script>
+    <script src="/static/js/image-preview.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/history-bulk-manager.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/cli-image-tools.js?v=2026.08.28.1790008596"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.08.04.1785292593');
+        @import url('/static/vendor/css/fonts.css?v=2026.08.28.1784453321');
 
         :root {
             --accent: #111827;
@@ -190,16 +193,16 @@
         html.studio-theme-dark .lora-track { background: #3a465a; }
         html.studio-theme-dark .lora-track.on { background: #3b82f6; }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.04.1785292588">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.28.1789984628">
+    <link rel="stylesheet" href="/static/css/image-tools.css?v=2026.08.28.1789986293">
+<script src="/static/js/prompt-handoff.js?v=2026.08.28.1790043887" defer></script>
 </head>
 
-<body class="antialiased transition-colors duration-300">
+<body class="image-tool image-tool--klein antialiased transition-colors duration-300">
     <div class="container-box min-h-screen flex flex-col">
-        <header class="flex justify-between items-end mb-10">
-            <div class="space-y-1">
-                <h1 class="text-4xl font-extrabold tracking-tighter italic">FLUX KLEIN</h1>
-                <p class="text-[10px] font-bold uppercase tracking-[0.4em] text-gray-400" data-i18n="nav.imageEdit">Next-Gen Generative Interface</p>
-            </div>
+        <header class="tool-header">
+            <h1 class="tool-title">FLUX KLEIN</h1>
+            <p class="tool-subtitle" data-i18n="nav.imageEdit">图片编辑</p>
         </header>
 
         <main class="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -208,24 +211,25 @@
                     <div class="flex items-center gap-2 text-gray-400">
                         <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
                         <span class="text-[10px] font-black uppercase tracking-widest" data-i18n="studio.inputPrompt">Input Prompt</span>
+                        <button type="button" class="prompt-library-trigger" data-prompt-library-target="promptInput">提示词库</button>
                     </div>
                     <textarea id="promptInput" rows="5"
                         class="nano-input w-full p-6 rounded-3xl text-sm outline-none resize-none placeholder-gray-300"
-                        placeholder="Describe your vision here..." data-i18n-placeholder="studio.describeVision"></textarea>
+                        placeholder="描述想对原图做的修改..." data-i18n-placeholder="studio.editPromptPlaceholder"></textarea>
                 </section>
 
                 <section class="space-y-4">
                     <div class="flex items-center gap-2 text-gray-400">
                         <i data-lucide="image" class="w-3.5 h-3.5"></i>
                         <span class="text-[10px] font-black uppercase tracking-widest" data-i18n="studio.referenceLayers">Reference Layers</span>
-                        <span id="cloudImgNote" class="hidden ml-auto text-[9px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full" data-i18n="studio.cloudUsesMain">Cloud uses Main image</span>
+
                     </div>
                     <div class="grid grid-cols-3 gap-4">
                         <div id="drop-zone-1" onclick="document.getElementById('file1').click()"
                             class="upload-item group aspect-square rounded-2xl flex flex-col items-center justify-center cursor-pointer">
                             <input type="file" id="file1" class="hidden" onchange="handleFile(this.files[0], 1)">
                             <i data-lucide="plus" class="w-5 h-5 text-gray-300 group-hover:text-black transition-colors"></i>
-                            <span class="text-[9px] mt-2 font-bold text-gray-400 uppercase">Main</span>
+                            <span class="text-[9px] mt-2 font-bold text-gray-400 uppercase" data-i18n="studio.originalImageRequired">原图（必填）</span>
                             <img id="prev1" class="preview-img hidden">
                             <button id="del1" onclick="clearSlot(1, event)"
                                 class="hidden absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full shadow-sm z-10 flex items-center justify-center text-xs">×</button>
@@ -254,46 +258,16 @@
                 <div class="engine-panel">
                     <div class="engine-label">
                         <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
-                        <span data-i18n="studio.engine">Engine</span>
+                        <span data-i18n="online.model">Engine</span>
                     </div>
-                    <div class="engine-switch">
-                        <button id="localBtn" class="engine-btn active" onclick="setEngine('local')">
-                            <i data-lucide="cpu" class="w-3 h-3"></i><span data-i18n="studio.local">Local</span>
-                        </button>
-                        <button id="cloudBtn" class="engine-btn" onclick="setEngine('cloud')">
-                            <i data-lucide="cloud" class="w-3 h-3"></i>ModelScope
-                        </button>
-                        <button id="cliBtn" class="engine-btn" onclick="setEngine('cli')">
-                            <i data-lucide="terminal" class="w-3 h-3"></i>CLI
-                        </button>
-                    </div>
+
                     <div id="cliProviderWrap" class="hidden">
                         <div id="cliProviderSelect" class="cli-provider-picker"></div>
                         <div id="cliProviderHint" class="mt-1 text-[9px] font-medium text-gray-400"></div>
                         <div id="cliSizeWrap" class="hidden"></div>
                     </div>
-                    <div id="cloudStatusBar" class="cloud-status">
-                        <div class="cloud-dot"></div>
-                        <span id="cloudStatusText" data-i18n="studio.connecting">Connecting...</span>
-                    </div>
-                    <div id="loraSection" class="hidden flex-col gap-3 pt-2 border-t border-gray-100">
-                        <label class="flex items-center gap-3 cursor-pointer select-none" onclick="toggleLora()">
-                            <div class="relative w-9 h-5 flex-shrink-0">
-                                <div id="loraTrack" class="lora-track w-full h-full rounded-full transition-colors duration-200"></div>
-                                <div id="loraThumb" class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"></div>
-                            </div>
-                            <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider" data-i18n="studio.detailLora">细节增强 LoRA</span>
-                        </label>
-                        <div id="loraStrengthRow" class="hidden flex-col gap-1.5">
-                            <div class="flex justify-between">
-                                <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest" data-i18n="studio.loraStrength">LoRA Strength</span>
-                                <span id="loraStrengthVal" class="text-[9px] font-bold text-gray-600">0.80</span>
-                            </div>
-                            <input type="range" id="loraStrengthSlider" min="0.1" max="1.0" step="0.05" value="0.8"
-                                class="w-full cursor-pointer accent-black" style="height:2px"
-                                oninput="document.getElementById('loraStrengthVal').textContent=parseFloat(this.value).toFixed(2)">
-                        </div>
-                    </div>
+
+
                 </div>
 
                 <button id="genBtn" onclick="submitWorkflow()"
@@ -327,7 +301,7 @@
 
         <section class="mt-32">
             <div class="flex items-center gap-6 mb-12">
-                <h2 class="text-[11px] font-black uppercase tracking-[0.5em]" data-i18n="studio.archives">Archives</h2>
+                <h2 class="tool-archive-title">Archive <span data-i18n="studio.archives">归档</span></h2>
                 <div class="h-px flex-1 bg-gray-100"></div>
             </div>
             <div id="masonry" class="masonry-grid"></div>
@@ -421,45 +395,19 @@
         let engine = 'local';
         let loraEnabled = false;
         const cliEngine = StudioCliImageTools.create({
-            selectId: 'cliProviderSelect', hintId: 'cliProviderHint', wrapId: 'cliProviderWrap', storageKey: 'klein_cli_provider_id'
+            selectId: 'cliProviderSelect', hintId: 'cliProviderHint', wrapId: 'cliProviderWrap', storageKey: 'klein_cli_provider_id', localModel:'FLUX.2 Klein 图片编辑', onChange:mode => setEngine(mode)
         });
-        const cliSizeControl = StudioCliImageTools.createSizeControl({ wrapId: 'cliSizeWrap', storageKey: 'klein_cli_size' });
+        const cliSizeControl = StudioCliImageTools.createSizeControl({ getModel: () => cliEngine.selected()?.image_models?.[0], wrapId: 'cliSizeWrap', storageKey: 'klein_cli_size' });
         document.getElementById('prev1').onload = event => cliSizeControl.setSourceDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
 
         // 引擎切换
         function setEngine(mode) {
-            engine = mode;
-            document.getElementById('localBtn').classList.toggle('active', mode === 'local');
-            document.getElementById('cloudBtn').classList.toggle('active', mode === 'cloud');
-            document.getElementById('cliBtn').classList.toggle('active', mode === 'cli');
-            document.getElementById('cloudImgNote').classList.toggle('hidden', mode !== 'cloud');
-            const loraSection = document.getElementById('loraSection');
-            if (mode === 'cloud') {
-                loraSection.classList.remove('hidden');
-                loraSection.classList.add('flex');
-            } else {
-                loraSection.classList.add('hidden');
-                loraSection.classList.remove('flex');
-            }
-            cliEngine.setActive(mode === 'cli');
-            cliSizeControl.setActive(mode === 'cli');
+            engine = mode === 'cli' ? 'cli' : 'local';
+            cliEngine.setActive(true);
+            cliSizeControl.setActive(true);
         }
 
-        function toggleLora() {
-            loraEnabled = !loraEnabled;
-            document.getElementById('loraTrack').classList.toggle('on', loraEnabled);
-            document.getElementById('loraThumb').style.transform = loraEnabled ? 'translateX(16px)' : '';
-            const row = document.getElementById('loraStrengthRow');
-            row.classList.toggle('hidden', !loraEnabled);
-            row.classList.toggle('flex', loraEnabled);
-        }
 
-        function setCloudStatus(text, visible = true) {
-            const bar = document.getElementById('cloudStatusBar');
-            const label = document.getElementById('cloudStatusText');
-            label.textContent = text;
-            bar.classList.toggle('visible', visible);
-        }
 
         // 拖拽上传
         let hoveredSlot = null;
@@ -516,9 +464,7 @@
         }
 
         async function submitWorkflow() {
-            if (engine === 'cloud') {
-                await submitCloud();
-            } else if (engine === 'cli') {
+            if (engine === 'cli') {
                 await submitCli();
             } else {
                 await submitLocal();
@@ -540,11 +486,14 @@
             placeholder.classList.add('hidden');
             loader.classList.remove('hidden');
 
+            const [outputWidth, outputHeight] = cliSizeControl.value().split('x').map(Number);
             const payload = {
                 prompt: document.getElementById('promptInput').value,
                 workflow_json: "Flux2-Klein.json",
                 type: "klein",
                 params: {
+                    "152": { "width": outputWidth, "height": outputHeight },
+                    "156": { "width": outputWidth, "height": outputHeight },
                     "168": { "text": document.getElementById('promptInput').value },
                     "158": { "noise_seed": Math.floor(Math.random() * 1000000) },
                     "278": { "image": uploadedNames[1] },
@@ -601,89 +550,11 @@
             return { width: align(w), height: align(h) };
         }
 
-        async function submitCloud() {
-            const prompt = document.getElementById('promptInput').value.trim();
-            if (!prompt) { alert("Please enter a prompt"); return; }
-            if (!base64Images[1]) { alert("Please upload Main Image (Slot 1) for cloud generation"); return; }
-
-            const btn = document.getElementById('genBtn');
-            const loader = document.getElementById('loader');
-            const placeholder = document.getElementById('placeholder');
-            const outputImg = document.getElementById('outputImg');
-            const downloadBtn = document.getElementById('downloadBtn');
-
-            btn.disabled = true;
-            btn.style.backgroundColor = '#333';
-            btn.innerHTML = `<i data-lucide="cloud" class="w-4 h-4 text-blue-400 animate-pulse"></i><span class="tracking-[0.3em] text-[11px] uppercase">${tr('studio.cloudProcessing')}</span>`;
-            lucide.createIcons();
-            placeholder.classList.add('hidden');
-            loader.classList.remove('hidden');
-            setCloudStatus(tr('studio.submittingModelscope'));
-
-            // Collect image URLs (base64 data URIs)
-            const imageUrls = [base64Images[1], base64Images[2], base64Images[3]].filter(Boolean);
-
-            try {
-                setCloudStatus('Processing with FLUX.2-Klein...');
-                const mainPrev = document.getElementById('prev1');
-                const msSize = computeMsSize(mainPrev && mainPrev.naturalWidth, mainPrev && mainPrev.naturalHeight);
-                const msPayload = {
-                    prompt,
-                    model: 'black-forest-labs/FLUX.2-klein-9B',
-                    image_urls: imageUrls,
-                    width: msSize.width,
-                    height: msSize.height,
-                    client_id: CLIENT_ID
-                };
-                if (loraEnabled) {
-                    const strength = parseFloat(document.getElementById('loraStrengthSlider').value);
-                    msPayload.loras = { 'Daniel8152/Klein-enhance': strength };
-                }
-                const response = await fetch('/api/ms/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(msPayload)
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'Cloud generation failed');
-                }
-
-                const result = await response.json();
-                if (result.url) {
-                    const resultData = {
-                        prompt,
-                        images: [result.url],
-                        timestamp: Date.now() / 1000,
-                        type: 'klein',
-                        model: 'black-forest-labs/FLUX.2-klein-9B'
-                    };
-                    currentResult = resultData;
-                    outputImg.src = result.url;
-                    outputImg.classList.remove('hidden');
-                    downloadBtn.classList.remove('hidden');
-                    downloadBtn.href = result.url;
-                    renderImageCard(resultData, true);
-                    setCloudStatus('Done!', false);
-                }
-            } catch (err) {
-                setCloudStatus(err.message, false);
-                alert("Cloud generation failed: " + err.message);
-                placeholder.classList.remove('hidden');
-            } finally {
-                loader.classList.add('hidden');
-                btn.disabled = false;
-                btn.style.backgroundColor = '';
-                btn.innerHTML = `<i data-lucide="zap" class="w-4 h-4 text-yellow-400"></i><span class="tracking-[0.3em] text-[11px] uppercase">${tr('studio.executeSynthesis')}</span>`;
-                lucide.createIcons();
-            }
-        }
 
         async function submitCli() {
             if (!base64Images[1]) { alert('Please upload Main Image (Slot 1)'); return; }
             const provider = cliEngine.selected();
-            if (!provider) { alert('请先在 API 设置中添加可用的 CLI 图像引擎。'); return; }
+            if (!provider) { alert('请选择可用模型，或在 API 设置中配置图像服务。'); return; }
 
             const btn = document.getElementById('genBtn');
             const loader = document.getElementById('loader');
@@ -706,7 +577,7 @@
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         prompt, provider_id: provider.id, model: provider.image_models[0], size: cliSizeControl.value(),
-                        reference_images, history_type: 'klein'
+                        reference_images, history_type: 'klein', operation: 'edit'
                     })
                 });
                 const result = await response.json();

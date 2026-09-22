@@ -1,8 +1,11 @@
 (function(){
     const KEY = 'studio_theme';
     const LEGACY_KEY = 'canvas_theme';
+    // 界面缩放：仅保留用户显式选择的百分比，默认 100%。
+    // 页面适配窗口宽度由各页面自己的响应式布局负责，不再随窗口尺寸整体缩小。
     const SCALE_KEY = 'studio_ui_scale_mode';
-    const SCALE_OPTIONS = ['auto', '60', '65', '70', '75', '80', '85', '90', '95', '100', '115', '125', '140'];
+    const SCALE_OPTIONS = ['80', '90', '100', '115', '125'];
+    const DEFAULT_SCALE_MODE = '100';
 
     function currentTheme(){
         return localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || 'light';
@@ -73,46 +76,19 @@
     }
 
     function normalizeScaleMode(mode){
-        return SCALE_OPTIONS.includes(mode) ? mode : 'auto';
+        return SCALE_OPTIONS.includes(mode) ? mode : DEFAULT_SCALE_MODE;
     }
 
     function currentScaleMode(){
         try {
-            return normalizeScaleMode(localStorage.getItem(SCALE_KEY) || 'auto');
+            return normalizeScaleMode(localStorage.getItem(SCALE_KEY) || DEFAULT_SCALE_MODE);
         } catch(e) {
-            return 'auto';
+            return DEFAULT_SCALE_MODE;
         }
-    }
-
-    function autoScale(){
-        const dpr = Math.max(1, Number(window.devicePixelRatio || 1));
-        const viewportWidth = Math.max(320, Number(window.innerWidth || 0));
-        const viewportHeight = Math.max(320, Number(window.innerHeight || 0));
-        const compactRatio = Math.min(viewportWidth / 1500, viewportHeight / 940);
-        if(compactRatio < 1) {
-            return Math.max(0.68, Math.min(1, compactRatio));
-        }
-        const screenLong = Math.max(window.screen?.width || 0, window.screen?.height || 0);
-        const viewportLong = Math.max(viewportWidth, viewportHeight);
-        const longEdge = Math.max(screenLong, viewportLong);
-        if(dpr >= 1.35) return 1;
-        if(longEdge >= 3600) return 1.22;
-        if(longEdge >= 3000) return 1.16;
-        if(longEdge >= 2500 && dpr <= 1.15) return 1.1;
-        return 1;
     }
 
     function scaleForMode(mode){
-        const next = normalizeScaleMode(mode);
-        if(next === 'auto' && Number.isFinite(externalScaleValue)) return externalScaleValue;
-        if(next === 'auto') return autoScale();
-        return Math.max(0.58, Math.min(1.4, Number(next) / 100));
-    }
-
-    let externalScaleValue = null;
-    function normalizeExternalScale(value){
-        const next = Number(value);
-        return Number.isFinite(next) ? Math.max(0.58, Math.min(1.4, next)) : null;
+        return Math.max(0.6, Math.min(1.4, Number(normalizeScaleMode(mode)) / 100));
     }
 
     function appliedScale(){
@@ -133,10 +109,6 @@
         return document.documentElement.dataset.studioScale === 'off';
     }
 
-    function contentFitOptedOut(){
-        return document.documentElement.dataset.studioFitScale === 'off';
-    }
-
     let horizontalScrollLockPending = false;
     function lockScaledHorizontalScroll(){
         if(horizontalScrollLockPending || !document.documentElement.classList.contains('studio-ui-scaled')) return;
@@ -150,41 +122,16 @@
         });
     }
 
-    let contentFitTimer = null;
-    function scheduleContentFit(mode){
-        clearTimeout(contentFitTimer);
-        if(mode !== 'auto' || scaleOptedOut() || contentFitOptedOut() || Number.isFinite(externalScaleValue)) return;
-        contentFitTimer = setTimeout(() => {
-            const root = document.documentElement;
-            if(!root.classList.contains('studio-ui-scaled')) return;
-            const current = Number(getComputedStyle(root).getPropertyValue('--studio-ui-scale')) || 1;
-            const viewportWidth = Math.max(320, Number(window.innerWidth || 0));
-            const contentWidth = Math.max(
-                viewportWidth,
-                root.scrollWidth || 0,
-                document.body?.scrollWidth || 0,
-                document.body?.offsetWidth || 0
-            );
-            const fitted = Math.max(0.58, Math.min(current, viewportWidth / contentWidth));
-            if(fitted < current - 0.006) {
-                root.style.setProperty('--studio-ui-scale', fitted.toFixed(3));
-                lockScaledHorizontalScroll();
-            }
-        }, 80);
-    }
-
     function applyScale(mode){
         ensureScaleStyle();
         const next = normalizeScaleMode(mode);
-        const optedOut = scaleOptedOut();
         const value = scaleForMode(next);
-        const scaled = !optedOut && Math.abs(value - 1) > 0.01;
+        const scaled = !scaleOptedOut() && Math.abs(value - 1) > 0.01;
         document.documentElement.classList.add('studio-scale-managed');
         document.documentElement.classList.toggle('studio-ui-scaled', scaled);
         document.documentElement.style.setProperty('--studio-ui-scale', value.toFixed(3));
         updateScaleBodyClasses();
         lockScaledHorizontalScroll();
-        scheduleContentFit(next);
         window.dispatchEvent(new CustomEvent('studio-ui-scale-change', { detail: { mode: next, scale: value } }));
     }
 
@@ -206,29 +153,6 @@
         if(shouldBroadcast) broadcastScale(next);
     }
 
-    let resizeTimer = null;
-    let autoScalePausedUntil = 0;
-    function pauseAutoScale(duration = 650){
-        autoScalePausedUntil = Math.max(autoScalePausedUntil, Date.now() + Math.max(0, Number(duration) || 0));
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(scheduleAutoScaleRefresh, Math.max(0, autoScalePausedUntil - Date.now()) + 40);
-    }
-
-    function scheduleAutoScaleRefresh(){
-        clearTimeout(resizeTimer);
-        const wait = autoScalePausedUntil - Date.now();
-        if(wait > 0) {
-            resizeTimer = setTimeout(scheduleAutoScaleRefresh, wait + 40);
-            return;
-        }
-        resizeTimer = setTimeout(() => {
-            if(currentScaleMode() === 'auto') {
-                applyScale('auto');
-                broadcastScale('auto');
-            }
-        }, 160);
-    }
-
     window.StudioTheme = {
         key: KEY,
         get: currentTheme,
@@ -244,6 +168,7 @@
     window.StudioScale = {
         key: SCALE_KEY,
         options: SCALE_OPTIONS.slice(),
+        default: DEFAULT_SCALE_MODE,
         getMode: currentScaleMode,
         getScale: () => scaleForMode(currentScaleMode()),
         apply: applyScale,
@@ -259,17 +184,11 @@
     });
     window.addEventListener('message', event => {
         if(event.data?.type === 'studio-theme') applyTheme(event.data.theme);
-        if(event.data?.type === 'studio-ui-scale') {
-            const incomingScale = normalizeExternalScale(event.data.scale);
-            if(incomingScale !== null) externalScaleValue = incomingScale;
-            setScaleMode(event.data.mode, false);
-        }
-        if(event.data?.type === 'studio-ui-scale-pause') pauseAutoScale(event.data.duration);
+        if(event.data?.type === 'studio-ui-scale') setScaleMode(event.data.mode, false);
     });
     window.addEventListener('storage', event => {
         if(event.key === KEY || event.key === LEGACY_KEY) applyTheme(currentTheme());
         if(event.key === SCALE_KEY) applyScale(currentScaleMode());
     });
-    window.addEventListener('resize', scheduleAutoScaleRefresh);
     window.addEventListener('scroll', lockScaledHorizontalScroll, { passive: true });
 })();

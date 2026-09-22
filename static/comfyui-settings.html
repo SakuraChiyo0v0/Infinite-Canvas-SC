@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工作流设置</title>
+    <title>本地模型（可选）</title>
+    <script src="/static/js/image-capabilities.js?v=2026.08.28.1790008596"></script>
     <script>
         (function(){
             try {
@@ -15,25 +16,29 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/js/theme.js?v=2026.08.04.1785292593"></script>
-    <script src="/static/js/i18n.js?v=2026.08.04.1785292592"></script>
-    <link rel="stylesheet" href="/static/css/comfyui-settings.css?v=2026.08.04.1785292586">
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.04.1785292588">
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/theme.js?v=2026.08.28.1789976811"></script>
+    <script src="/static/js/i18n.js?v=2026.08.28.1790009024"></script>
+    <link rel="stylesheet" href="/static/css/comfyui-settings.css?v=2026.08.28.1784453321">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.28.1789984628">
 </head>
 <body>
     <div class="page">
         <div class="wrap">
             <header class="page-head">
                 <div>
-                    <div class="title" data-i18n="comfy.title">工作流设置</div>
-                    <div class="sub" data-i18n="comfy.subtitle">选择本地 ComfyUI 工作流，配置可暴露到画布的输入参数。</div>
+                    <div class="title" data-i18n="comfy.title">本地模型（可选）</div>
+                    <div class="sub" data-i18n="comfy.subtitle">使用在线模型无需配置此页；启用后可配置本地 ComfyUI 工作流。</div>
                 </div>
                 <div id="status" class="status"></div>
             </header>
 
-            <div class="layout">
+            <label style="display:flex;gap:10px;align-items:center;margin-bottom:18px;padding:16px;background:var(--panel);border:1px solid var(--border);border-radius:12px">
+                <input id="enableLocalComfy" type="checkbox">
+                <span><strong>启用本地 ComfyUI（可选）</strong><br><small>仅在你已安装并运行 ComfyUI 时开启。使用在线模型无需安装。</small></span>
+            </label>
+            <div class="layout" id="localComfySettings" hidden>
                 <aside class="sidebar">
                     <div class="side-card workflow-panel workflow-panel-comfy">
                         <div class="side-title">ComfyUI 后端地址</div>
@@ -122,6 +127,17 @@
         <img id="imageLightboxImg" src="" alt="preview" onclick="event.stopPropagation()">
     </div>
 
-    <script src="/static/js/comfyui-settings.js?v=2026.08.04.1785292591"></script>
+    <script>
+        const localToggle = document.getElementById('enableLocalComfy');
+        const localSettings = document.getElementById('localComfySettings');
+        function syncLocalSettings() {
+            localToggle.checked = StudioImageCapabilities.localEnabled();
+            localSettings.hidden = !localToggle.checked;
+            localSettings.style.display = localToggle.checked ? '' : 'none';
+        }
+        localToggle.onchange = () => { StudioImageCapabilities.setLocalEnabled(localToggle.checked); syncLocalSettings(); };
+        syncLocalSettings();
+    </script>
+    <script src="/static/js/comfyui-settings.js?v=2026.08.28.1784453321"></script>
 </body>
 </html>

@@ -1,0 +1,63 @@
+/* Presentation shared only by the four image tools. */
+.image-tool .container-box { max-width: none; margin: 0; padding: 24px; }
+.image-tool .tool-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 24px; }
+.image-tool .tool-title { margin: 0; font-size: 32px; font-weight: 850; font-style: italic; letter-spacing: -.045em; line-height: 1.1; }
+.image-tool .tool-subtitle { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .14em; color: var(--ui-text-muted, #64748b); }
+/* Header (36px), header gap (24px) and page padding (48px).
+   Grow the work area, not the gaps between parameter controls. */
+.image-tool .tool-header { min-height: 36px; }
+.image-tool main { min-height: calc(100vh - 108px); min-height: calc(100dvh - 108px); }
+.image-tool--angle main { display: flex; flex-direction: column; }
+.image-tool--angle main > div:last-child { flex: 1; }
+.image-tool:not(.image-tool--angle) main { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 24px; align-items: stretch; }
+.image-tool main > div { min-width: 0; grid-column: auto; }
+.image-tool:not(.image-tool--angle) main > div:first-child { display: flex; flex-direction: column; gap: 16px; }
+.image-tool:not(.image-tool--angle) main > div:first-child > * { margin: 0; }
+.image-tool main section > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; }
+.image-tool main h3 { margin-bottom: 12px; font-size: 12px; letter-spacing: .08em; color: var(--ui-text-muted, #64748b); }
+.image-tool main [class*="text-[9px]"],
+.image-tool main [class*="text-[10px]"],
+.image-tool main [class*="text-[11px]"],
+.image-tool .engine-label, .image-tool .control-label { font-size: 14px; letter-spacing: normal; }
+.image-tool main .text-gray-400 { color: var(--ui-text-muted, #64748b); }
+.image-tool #promptInput { height: 124px; min-height: 124px; padding: 12px; border-radius: 12px; flex: none; }
+.image-tool #promptInput::placeholder { color: var(--ui-text-muted, #64748b); opacity: .8; }
+.image-tool .engine-panel, .image-tool .tool-panel { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; gap: 12px; }
+.image-tool .engine-label { margin-bottom: 0; }
+.image-tool .size-select, .image-tool .size-custom, .image-tool .cli-size-select { min-height: 40px; font-size: 14px; font-weight: 500; border-radius: 8px; }
+.image-tool #genBtn { min-height: 44px; padding: 12px; border-radius: 10px; font-size: 14px; letter-spacing: normal; box-shadow: 0 4px 12px #0000000d; }
+.image-tool .upload-item { border-radius: 12px; }
+.image-tool .upload-item span { font-size: 11px; }
+.image-tool #resultBox { min-height: 500px; height: 100%; border-radius: 16px; }
+.image-tool #outputImg { max-height: calc(100vh - 120px); padding: 16px; }
+.image-tool #placeholder, .image-tool #emptyState { opacity: .5; }
+.image-tool .container-box > section { margin-top: 28px; }
+.image-tool .container-box > section > div:first-child { margin-bottom: 16px; gap: 16px; }
+.image-tool .tool-archive-title { display: flex; align-items: baseline; gap: 12px; font-size: 15px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.image-tool .tool-archive-title span { font-size: 12px; font-weight: 500; letter-spacing: normal; color: var(--ui-text-muted, #64748b); }
+.image-tool #loadMoreTrigger { padding: 24px; font-size: 12px; letter-spacing: .08em; }
+.image-tool #localControls > * + * { margin-top: 16px; }
+.image-tool #localControls > div > * + * { margin-top: 12px; }
+.image-tool #localControls .p-5 { padding: 12px; border-radius: 12px; }
+.image-tool #dropzone { max-height: 240px; }
+.image-tool--enhance #dropzone { height: 170px; aspect-ratio: auto; }
+.image-tool--angle main > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.image-tool--angle main > div + div { margin-top: 24px; }
+.image-tool--angle #threeContainer { min-width: 100px; min-height: 160px; }
+.image-tool--angle #cameraControl > div > div:last-child { width: 220px; padding: 16px; }
+.image-tool--angle #resultBox { min-height: 300px; height: auto; flex: 1; aspect-ratio: auto; }
+.image-tool--angle main > div > section > .flex-1 { flex: none; }
+.image-tool--angle #textResult { padding: 20px; }
+@media (max-width: 1100px) {
+    .image-tool--angle #cameraControl > div { flex-direction: column; height: auto; }
+    .image-tool--angle #threeContainer { height: 200px; flex: none; }
+    .image-tool--angle #cameraControl > div > div:last-child { width: 100%; border-left: 0; }
+}
+@media (max-width: 850px) {
+    .image-tool .container-box { padding: 16px; }
+    .image-tool main { min-height: calc(100vh - 92px); min-height: calc(100dvh - 92px); }
+    .image-tool .tool-title { font-size: 28px; }
+    .image-tool:not(.image-tool--angle) main, .image-tool--angle main > div { grid-template-columns: minmax(0, 1fr); }
+    .image-tool #resultBox { min-height: 320px; }
+    .image-tool main .grid-cols-3 { max-width: 340px; }
+}

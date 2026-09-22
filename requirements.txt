@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+websockets>=12,<16
 requests
 pydantic
 python-multipart

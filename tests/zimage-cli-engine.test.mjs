@@ -1,25 +1,67 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-
-const zimage = readFileSync(new URL('../static/zimage.html', import.meta.url), 'utf8');
-const backend = readFileSync(new URL('../main.py', import.meta.url), 'utf8');
-const index = readFileSync(new URL('../static/index.html', import.meta.url), 'utf8');
-const apiSettings = readFileSync(new URL('../static/js/api-settings.js', import.meta.url), 'utf8');
-
-assert.match(zimage, /id="modeCli"/, 'zimage must expose a CLI engine source');
-assert.match(zimage, /id="cliProviderSelect"/, 'zimage must let the user select a configured CLI provider');
-assert.match(zimage, /id="zimageSizeWrap"/, 'zimage must expose shared output-size controls');
-assert.match(zimage, /createSizeControl\(/, 'zimage must initialize the shared output-size controls');
-assert.match(zimage, /size:\s*zimageSizeControl\.value\(\)/, 'zimage CLI requests must use the selected output size');
-assert.match(zimage, /fetch\('\/api\/providers'/, 'zimage must load configured providers');
-assert.match(zimage, /providers-changed[\s\S]*?loadCliImageProviders/, 'zimage must refresh CLI providers after API settings changes');
-assert.match(zimage, /function eligibleCliImageProviders\(providers\)[\s\S]*?item\.image_configured === true[\s\S]*?Array\.isArray\(item\.image_models\)[\s\S]*?item\.image_models\.length > 0/, 'zimage must select only configured image providers');
-assert.doesNotMatch(zimage, /BUILT_IN_REMOTE_PROVIDER_IDS|CLI_PROTOCOLS/, 'zimage must not discard valid providers by protocol or provider ID');
-assert.match(index, /frame-zimage" data-src="\/static\/zimage\.html\?v=[^"]+"/, 'local text-to-image iframe must load a versioned resource');
-assert.match(index, /frame-angle" data-src="\/static\/angle\.html\?v=[^"]+"/, 'local angle iframe must load a versioned resource');
-assert.match(apiSettings, /本机 CLI 已就绪[\s\S]*?本机 CLI 未就绪/, 'API settings must show local CLI readiness instead of a missing address');
-assert.match(zimage, /fetch\('\/api\/online-image'/, 'CLI image generation must use the provider-aware image endpoint');
-assert.match(zimage, /history_type:\s*['"]zimage['"]/, 'CLI requests must preserve zimage history');
-assert.match(zimage, /if \(!cliImageProviders\.length\)[\s\S]*?请先在 API 设置中添加可用的 CLI 图像引擎/, 'zimage must explain missing CLI configuration without submitting a request');
-assert.match(backend, /history_type:\s*str\s*=\s*["']online["']/, 'online-image requests must default their history type to online');
-assert.match(backend, /["']type["']:\s*payload\.history_type/, 'online-image results must store the caller history type');
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const read = p => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+const html = read('static/online.html');
+const source = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].at(-1)[1];
+const elements = new Map();
+const element = id => {
+  if(!elements.has(id)) elements.set(id, {value:'', innerHTML:'', style:{}, classList:{add(){},remove(){},toggle(){}}, prepend(){}, appendChild(){}});
+  return elements.get(id);
+};
+const requests = [], alerts = [];
+const context = vm.createContext({
+  window:{addEventListener(){}}, document:{getElementById:element,addEventListener(){}},
+  localStorage:{getItem(){return null;},setItem(){}}, lucide:{createIcons(){}},
+  IntersectionObserver:class {observe(){}}, console, setTimeout, clearTimeout,
+  alert:message => alerts.push(message),
+  fetch:async (url, options) => {
+    requests.push({url, body:options?.body && JSON.parse(options.body)});
+    return {ok:true,json:async () => ({images:['/test.png'],timestamp:123})};
+  }
+});
+vm.runInContext(read('static/js/image-capabilities.js'), context);
+context.StudioImageCapabilities = context.window.StudioImageCapabilities;
+vm.runInContext(source, context);
+const run = code => vm.runInContext(code, context);
+run(`apiProviders = [
+ {id:'a',name:'A',protocol:'openai',enabled:true,image_configured:true,image_models:['same','second']},
+ {id:'b',name:'B',protocol:'openai',enabled:true,image_configured:true,image_models:['same']},
+ {id:'modelscope',image_configured:true,image_models:['retired']},
+ {id:'off',enabled:false,image_configured:true,image_models:['disabled']},
+ {id:'unready',image_configured:false,image_models:['unready']}
+]; renderProviderControls(); renderImageCard = () => {};`);
+assert.equal(run('modelOptions.length'), 3);
+assert.equal(run('provider'),'a');
+assert.doesNotMatch(element('modelSelect').innerHTML,/本地 ComfyUI/);
+assert.match(element('modelSelect').innerHTML, /same · A/);
+assert.match(element('modelSelect').innerHTML, /same · B/);
+element('promptInput').value = 'a test image';
+run(`setModel(JSON.stringify(['b','same']));`);
+await run('submitImage()');
+assert.equal(requests.at(-1).url, '/api/online-image');
+assert.equal(requests.at(-1).body.provider_id, 'b', 'duplicate names must route to selected provider');
+assert.equal(requests.at(-1).body.model, 'same');
+run(`setModel(JSON.stringify(['a','second']));`);
+await run('submitImage()');
+assert.equal(requests.at(-1).body.model, 'second');
+run(`StudioImageCapabilities.localEnabled=()=>true; renderProviderControls(); setModel(JSON.stringify(['local-comfy','Z-Image']));`);
+await run('submitImage()');
+assert.equal(requests.at(-1).url, '/api/generate');
+assert.equal(requests.at(-1).body.workflow_json, 'Z-Image.json');
+assert.equal(requests.at(-1).body.width, 1024);
+assert.equal(requests.find(r => r.url === '/api/online-image').body.operation, 'generate');
+assert.ok(requests.filter(r => r.url === '/api/online-image').every(r => !r.body.reference_images));
+assert.doesNotMatch(html, /id="file[123]"|handleFile|addEventListener\('paste'/);
+let before = requests.length;
+run(`setModel(JSON.stringify(['b','same'])); apiProviders=apiProviders.filter(p=>p.id!=='b'); renderProviderControls();`);
+await run('submitImage()');
+assert.equal(requests.length, before, 'removed selection must not silently fall back');
+assert.equal(run('provider'), 'b');
+context.fetch = async url => ({ok:true,json:async () => url.includes('zimage') ? [{timestamp:1,images:['/old.png']}] : [{timestamp:2,images:['/new.png']}]});
+await run('loadHistory(0)');
+assert.deepEqual(JSON.parse(run('JSON.stringify(allHistory.map(x=>x.timestamp))')), [2,1]);
+assert.match(read('static/zimage.html'), /location.replace\('\/static\/online.html'/);
+assert.doesNotMatch(read('static/index.html'), /id="local-nav-toggle"|id="frame-online"/);
+assert.doesNotMatch(html, /id="providerSelect"|id="modeCloud"/);
+console.log('Text-only generation, explicit operation, unavailable models and history passed');

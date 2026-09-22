@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/logo.png" type="image/png">
-    <title>在线生图</title>
-    <script>
+    <title>文生图</title>
+    <script src="/static/js/image-capabilities.js?v=2026.08.28.1790008596"></script>
+    <link rel="stylesheet" href="/static/css/prompt-library-picker.css?v=2026.08.28.1790010587">
+    <script src="/static/js/prompt-library-picker.js?v=2026.08.28.1790043937" defer></script>
+<script>
         (function(){
             try {
                 var theme = localStorage.getItem('studio_theme') || localStorage.getItem('canvas_theme') || 'light';
@@ -16,14 +19,14 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.08.04.1785292594"></script>
-    <script src="/static/js/theme.js?v=2026.08.04.1785292593"></script>
-    <script src="/static/js/i18n.js?v=2026.08.04.1785292592"></script>
-    <script src="/static/js/image-preview.js?v=2026.08.04.1785292584"></script>
-    <script src="/static/js/history-bulk-manager.js?v=2026.08.04.1785292584"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/theme.js?v=2026.08.28.1789976811"></script>
+    <script src="/static/js/i18n.js?v=2026.08.28.1790009024"></script>
+    <script src="/static/js/image-preview.js?v=2026.08.28.1784453321"></script>
+    <script src="/static/js/history-bulk-manager.js?v=2026.08.28.1784453321"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.08.04.1785292593');
+        @import url('/static/vendor/css/fonts.css?v=2026.08.28.1784453321');
         :root { --accent:#111827; --bg:#f9fafb; --card:#fff; --easing:cubic-bezier(0.4,0,0.2,1); }
         body { background:var(--bg); font-family:'Inter',-apple-system,sans-serif; color:var(--accent); -webkit-font-smoothing:antialiased; }
         .container-box { max-width:1280px; margin:0 auto; padding:0 40px; margin-top:50px; }
@@ -63,25 +66,23 @@
         .gallery-lightbox { background:rgba(255,255,255,.99); backdrop-filter:blur(22px) saturate(1.05); }
         @keyframes fadeIn { from{opacity:0} to{opacity:1} }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.04.1785292588">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.28.1789984628">
     <style>
         html:not(.studio-theme-dark) body:not(.studio-theme-dark) #lightbox.gallery-lightbox {
             background: rgba(255,255,255,.99) !important;
             backdrop-filter: blur(22px) saturate(1.05) !important;
             -webkit-backdrop-filter: blur(22px) saturate(1.05) !important;
         }
+
     </style>
+    <link rel="stylesheet" href="/static/css/image-tools.css?v=2026.08.28.1789986293">
+<script src="/static/js/prompt-handoff.js?v=2026.08.28.1790043887" defer></script>
 </head>
-<body>
+<body class="image-tool image-tool--online">
     <div class="container-box min-h-screen flex flex-col">
-        <header class="flex justify-between items-end mb-16">
-            <div class="space-y-1">
-                <h1 class="text-4xl font-extrabold tracking-tighter italic" data-i18n="online.title">在线生图</h1>
-                <p class="text-[10px] font-bold uppercase tracking-[0.4em] text-gray-400">GPT / NANO BANANA IMAGE STUDIO</p>
-            </div>
-            <nav class="hidden md:flex gap-8 text-[11px] font-bold uppercase tracking-widest text-gray-400">
-                <span class="text-black border-b-2 border-black pb-1" data-i18n="online.create">Create</span>
-            </nav>
+        <header class="tool-header">
+            <h1 class="tool-title">IMAGE STUDIO</h1>
+            <p class="tool-subtitle" data-i18n="online.title">文生图</p>
         </header>
 
         <main class="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -89,86 +90,62 @@
                 <section class="space-y-4">
                     <div class="flex items-center gap-2 text-gray-400">
                         <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
-                        <span class="text-[10px] font-black uppercase tracking-widest">Prompt</span>
+                        <label for="promptInput" class="text-[10px] font-black uppercase tracking-widest" data-i18n="studio.promptLabel">提示词</label>
+                        <button type="button" class="prompt-library-trigger" data-prompt-library-target="promptInput">提示词库</button>
                     </div>
-                    <textarea id="promptInput" rows="5" class="nano-input w-full p-6 rounded-3xl text-sm outline-none resize-none placeholder-gray-300" placeholder="输入想生成或编辑的画面..." data-i18n-placeholder="online.promptPlaceholder"></textarea>
-                </section>
-
-                <section class="space-y-4">
-                    <div class="flex items-center gap-2 text-gray-400">
-                        <i data-lucide="images" class="w-3.5 h-3.5"></i>
-                        <span class="text-[10px] font-black uppercase tracking-widest" data-i18n="online.referenceImages">Reference Images</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-4">
-                        <div id="drop-zone-1" onclick="document.getElementById('file1').click()" class="upload-item group aspect-square rounded-2xl flex flex-col items-center justify-center cursor-pointer">
-                            <input type="file" id="file1" accept="image/*" class="hidden" onchange="handleFile(this.files[0],1)">
-                            <i data-lucide="plus" class="w-5 h-5 text-gray-300 group-hover:text-black"></i><span class="text-[9px] mt-2 font-bold text-gray-400 uppercase">Main</span>
-                            <img id="prev1" class="preview-img hidden"><button id="del1" onclick="clearSlot(1,event)" class="hidden absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full shadow-sm z-10">×</button>
-                        </div>
-                        <div id="drop-zone-2" onclick="document.getElementById('file2').click()" class="upload-item group aspect-square rounded-2xl flex flex-col items-center justify-center cursor-pointer">
-                            <input type="file" id="file2" accept="image/*" class="hidden" onchange="handleFile(this.files[0],2)">
-                            <i data-lucide="plus" class="w-5 h-5 text-gray-300 group-hover:text-black"></i><span class="text-[9px] mt-2 font-bold text-gray-400 uppercase">Aux A</span>
-                            <img id="prev2" class="preview-img hidden"><button id="del2" onclick="clearSlot(2,event)" class="hidden absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full shadow-sm z-10">×</button>
-                        </div>
-                        <div id="drop-zone-3" onclick="document.getElementById('file3').click()" class="upload-item group aspect-square rounded-2xl flex flex-col items-center justify-center cursor-pointer">
-                            <input type="file" id="file3" accept="image/*" class="hidden" onchange="handleFile(this.files[0],3)">
-                            <i data-lucide="plus" class="w-5 h-5 text-gray-300 group-hover:text-black"></i><span class="text-[9px] mt-2 font-bold text-gray-400 uppercase">Aux B</span>
-                            <img id="prev3" class="preview-img hidden"><button id="del3" onclick="clearSlot(3,event)" class="hidden absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full shadow-sm z-10">×</button>
-                        </div>
-                    </div>
+                    <textarea id="promptInput" rows="5" class="nano-input w-full p-6 rounded-3xl text-sm outline-none resize-none placeholder-gray-300" placeholder="描述想生成的画面..." data-i18n-placeholder="online.promptPlaceholder"></textarea>
                 </section>
 
                 <div class="tool-panel">
                     <div class="control-label">
                         <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
-                        <span data-i18n="online.model">Model</span>
-                        <span id="providerModeBadge" class="mode-badge" style="margin-left:auto;display:none;"></span>
+                        <label for="modelSelect" data-i18n="online.model">Model</label>
                     </div>
-                    <div class="size-row">
-                        <label class="size-field">
-                            <select id="providerSelect" class="size-select" onchange="setProvider(this.value)"></select>
-                        </label>
-                        <label class="size-field">
-                            <select id="modelSelect" class="size-select" onchange="setModel(this.value)"></select>
-                        </label>
+                    <div>
+                        <div class="size-field">
+                            <select id="modelSelect" aria-label="模型" class="size-select" onchange="setModel(this.value)"></select>
+                        </div>
                     </div>
                     <div id="adaptiveExtras" class="size-row" style="margin-top:2px;">
-                        <label id="qualityField" class="size-field">
-                            <select id="qualitySelect" class="size-select" onchange="setQuality(this.value)" title="Quality">
+                        <div id="qualityField" class="size-field">
+                            <label for="qualitySelect" class="control-label">画质</label>
+                            <select id="qualitySelect" class="size-select" onchange="setQuality(this.value)" title="画质">
                                 <option value="auto" data-i18n="online.qualityAuto">自动</option>
                                 <option value="low" data-i18n="online.qualityLow">低</option>
                                 <option value="medium" data-i18n="online.qualityMedium">中</option>
                                 <option value="high" data-i18n="online.qualityHigh">高</option>
                             </select>
-                        </label>
-                        <label id="countField" class="size-field">
-                            <select id="countSelect" class="size-select" onchange="setCount(this.value)" title="Count">
+                        </div>
+                        <div id="countField" class="size-field">
+                            <label for="countSelect" class="control-label">生成数量</label>
+                            <select id="countSelect" class="size-select" onchange="setCount(this.value)" title="生成数量">
                                 <option value="1" selected>×1</option>
                                 <option value="2">×2</option>
                                 <option value="3">×3</option>
                                 <option value="4">×4</option>
                             </select>
-                        </label>
+                        </div>
                     </div>
                     <div class="control-label mt-1">
                         <i data-lucide="ruler" class="w-3.5 h-3.5"></i>
                         <span data-i18n="online.size">Size</span>
                     </div>
                     <div class="size-row">
-                        <label id="resolutionField" class="size-field">
+                        <div id="resolutionField" class="size-field">
+                            <label for="resolutionSelect" class="control-label">分辨率</label>
                             <select id="resolutionSelect" class="size-select" onchange="setResolution(this.value)">
                                 <option value="1k" selected>1K</option>
                                 <option value="2k">2K</option>
                                 <option value="4k">4K</option>
                                 <option value="custom" data-i18n="online.customSize">自定义尺寸</option>
                             </select>
-                            <span class="size-pair with-fit">
-                                <input id="sizeCustomWidth" class="size-custom" type="number" min="64" step="64" placeholder="宽度" data-i18n-placeholder="online.width" oninput="setCustomSize()">
-                                <input id="sizeCustomHeight" class="size-custom" type="number" min="64" step="64" placeholder="高度" data-i18n-placeholder="online.height" oninput="setCustomSize()">
-                                <button id="fitImageSizeBtn" class="size-fit-btn" type="button" onclick="fitCustomSizeToImage(event)">适配图片</button>
+                            <span class="size-pair">
+                                <input id="sizeCustomWidth" aria-label="自定义宽度（像素）" class="size-custom" type="number" min="64" step="64" placeholder="宽度" data-i18n-placeholder="online.width" oninput="setCustomSize()">
+                                <input id="sizeCustomHeight" aria-label="自定义高度（像素）" class="size-custom" type="number" min="64" step="64" placeholder="高度" data-i18n-placeholder="online.height" oninput="setCustomSize()">
                             </span>
-                        </label>
-                        <label id="ratioField" class="size-field">
+                        </div>
+                        <div id="ratioField" class="size-field">
+                            <label for="ratioSelect" class="control-label">画面比例</label>
                             <select id="ratioSelect" class="size-select" onchange="setRatio(this.value)">
                                 <option value="" data-i18n="online.emptyRatio">比例为空</option>
                                 <option value="square" selected data-i18n="online.square">1:1 方图</option>
@@ -181,10 +158,10 @@
                                 <option value="custom" data-i18n="online.customRatio">自定义比例</option>
                             </select>
                             <span class="size-pair">
-                                <input id="ratioCustomWidth" class="size-custom" type="number" min="1" step="1" placeholder="宽" data-i18n-placeholder="online.ratioWidth" oninput="setCustomRatio()">
-                                <input id="ratioCustomHeight" class="size-custom" type="number" min="1" step="1" placeholder="高" data-i18n-placeholder="online.ratioHeight" oninput="setCustomRatio()">
+                                <input id="ratioCustomWidth" aria-label="自定义比例宽" class="size-custom" type="number" min="1" step="1" placeholder="宽" data-i18n-placeholder="online.ratioWidth" oninput="setCustomRatio()">
+                                <input id="ratioCustomHeight" aria-label="自定义比例高" class="size-custom" type="number" min="1" step="1" placeholder="高" data-i18n-placeholder="online.ratioHeight" oninput="setCustomRatio()">
                             </span>
-                        </label>
+                        </div>
                     </div>
                 </div>
 
@@ -205,7 +182,7 @@
         </main>
 
         <section class="mt-32">
-            <div class="flex items-center gap-6 mb-12"><h2 class="text-[11px] font-black uppercase tracking-[0.5em]" data-i18n="online.archives">Archives</h2><div class="h-px flex-1 bg-gray-100"></div></div>
+            <div class="flex items-center gap-6 mb-12"><h2 class="tool-archive-title">Archive <span data-i18n="studio.archives">归档</span></h2><div class="h-px flex-1 bg-gray-100"></div></div>
             <div id="masonry" class="masonry-grid"></div>
             <div id="loadMoreTrigger" class="py-20 text-center text-gray-300 text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:text-black">Load More Archive</div>
         </section>
@@ -251,10 +228,10 @@
             document.title = tr('online.title');
             updateAdaptivePanel();
         });
-        let refs = {1:null,2:null,3:null};
-        let refDims = {1:null,2:null,3:null};
-        let provider = 'comfly';
-        let selectedModel = 'gpt-image-2';
+        let provider = '';
+        let selectedModel = '';
+        let modelOptions = [];
+        let selectionUnavailable = false;
         let apiProviders = [];
         let ratio = 'square';
         let resolution = '1k';
@@ -312,16 +289,16 @@
             return (list || []).map(item => String(item || '').trim()).filter(item => item && !seen.has(item) && seen.add(item));
         }
         function imageProviders(){
-            const list = (apiProviders || []).filter(p => p.enabled !== false && (
-                (p.image_models || []).length || (p.rh_apps || []).length || (p.rh_workflows || []).length
+            return (apiProviders || []).filter(p => p.id !== 'modelscope' && p.enabled !== false && (
+                p.image_configured === true || ((p.protocol === 'runninghub' || p.id === 'runninghub') && (p.has_key || p.has_wallet_key))
             ));
-            return list.length ? list : [{id:'comfly', name:'Comfly', image_models:[models.gpt, models.nano]}];
         }
         function providerById(id){
-            return imageProviders().find(p => p.id === id) || imageProviders()[0];
+            if(id === 'local-comfy') return {id, name:'本地 ComfyUI', protocol:'comfy', image_models:['Z-Image']};
+            return imageProviders().find(p => p.id === id) || null;
         }
         function providerModels(id){
-            return uniqueModels(providerById(id)?.image_models || [models.gpt]);
+            return uniqueModels(providerById(id)?.image_models || []);
         }
         /* ---- RunningHub：同一平台下同步模型 API / 工作流 / AI 应用。
          * 模型 API 直接提交原始模型名；value=app:ID / workflow:ID 走 RH 应用/工作流路径。 */
@@ -342,29 +319,25 @@
             return [...models, ...collect(p.rh_workflows, 'workflow'), ...collect(p.rh_apps, 'app')];
         }
         function isRunningHubProvider(id){ return providerProtocol(id) === 'runninghub'; }
+        window.addEventListener('studio-local-comfy-change', () => renderProviderControls());
         function renderProviderControls(){
-            const providerSelect = document.getElementById('providerSelect');
-            const modelSelect = document.getElementById('modelSelect');
-            const providers = imageProviders();
-            if(!providers.some(p => p.id === provider)) provider = providers[0]?.id || 'comfly';
-            providerSelect.innerHTML = providers.map(p => `<option value="${escapeHtml(p.id)}" ${p.id === provider ? 'selected' : ''}>${escapeHtml(p.name || p.id)}</option>`).join('');
-            if(isRunningHubProvider(provider)){
-                const entries = runningHubEntries(provider);
-                const keys = entries.map(e => e.kind === 'model' ? e.id : `${e.kind}:${e.id}`);
-                if(!keys.includes(selectedModel)) selectedModel = keys[0] || '';
-                modelSelect.innerHTML = entries.length
-                    ? entries.map(e => {
-                        const key = e.kind === 'model' ? e.id : `${e.kind}:${e.id}`;
-                        const tag = e.kind === 'model' ? '模型 API' : e.kind === 'workflow' ? tr('online.rhWorkflow') : tr('online.rhApp');
-                        const label = e.title || e.id;
-                        return `<option value="${escapeHtml(key)}" ${key === selectedModel ? 'selected' : ''}>${escapeHtml(`[${tag}] ${label}`)}</option>`;
-                    }).join('')
-                    : `<option value="">${escapeHtml(tr('online.rhNoEntries'))}</option>`;
-            } else {
-                const modelsForProvider = providerModels(provider);
-                if(!modelsForProvider.includes(selectedModel)) selectedModel = modelsForProvider[0] || models.gpt;
-                modelSelect.innerHTML = modelsForProvider.map(m => `<option value="${escapeHtml(m)}" ${m === selectedModel ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('');
+            const select = document.getElementById('modelSelect');
+            modelOptions = StudioImageCapabilities.localEnabled() ? [{provider:'local-comfy', model:'Z-Image', label:'Z-Image · 本地 ComfyUI'}] : [];
+            imageProviders().forEach(p => {
+                const entries = isRunningHubProvider(p.id) ? runningHubEntries(p.id) : providerModels(p.id).map(id => ({id, kind:'model', title:id}));
+                entries.forEach(e => modelOptions.push({provider:p.id, model:e.kind === 'model' ? e.id : `${e.kind}:${e.id}`, label:`${e.title || e.id}${e.kind === 'model' ? '' : e.kind === 'workflow' ? '（工作流）' : '（应用）'} · ${p.name || p.id}`}));
+            });
+            if (!provider || (provider === 'local-comfy' && !StudioImageCapabilities.localEnabled())) {
+                const first = modelOptions.find(o => o.provider !== 'local-comfy') || modelOptions[0];
+                provider = first?.provider || ''; selectedModel = first?.model || '';
+                if (first) localStorage.setItem('studio_image_model', JSON.stringify([provider, selectedModel]));
             }
+            const key = JSON.stringify([provider, selectedModel]);
+            selectionUnavailable = !modelOptions.some(o => JSON.stringify([o.provider, o.model]) === key);
+            select.innerHTML = (selectionUnavailable ? '<option value="" selected disabled>原模型不可用，请重新选择</option>' : '') + modelOptions.map(o => {
+                const value = JSON.stringify([o.provider, o.model]);
+                return `<option value="${escapeHtml(value)}" ${value === key ? 'selected' : ''}>${escapeHtml(o.label)}</option>`;
+            }).join('');
             updateAdaptivePanel();
         }
 
@@ -376,7 +349,7 @@
             const proto = String(p.protocol || '').toLowerCase();
             const pid = String(p.id || '').toLowerCase();
             const base = String(p.base_url || '').toLowerCase();
-            if(proto === 'modelscope' || pid === 'modelscope') return 'modelscope';
+            if(pid === 'local-comfy') return 'comfy';
             if(proto === 'runninghub' || pid === 'runninghub') return 'runninghub';
             if(proto === 'jimeng' || pid === 'jimeng') return 'jimeng';
             if(proto === 'volcengine' || pid === 'volcengine') return 'volcengine';
@@ -385,13 +358,15 @@
             return 'api';
         }
         const PROTOCOL_BADGE = {
-            api:'online.modeApi', apimart:'online.modeApi', modelscope:'online.modeModelscope',
+            api:'online.modeApi', apimart:'online.modeApi',
             runninghub:'online.modeRunningHub', jimeng:'online.modeJimeng',
             volcengine:'online.modeVolcengine', gemini:'online.modeGemini'
         };
         // 仅 OpenAI / APIMart（gpt-image 系）后端会消费 quality；其它协议忽略，隐藏以免误导。
         const QUALITY_PROTOCOLS = new Set(['api','apimart']);
+        function nativeImageSize(){ return StudioImageCapabilities.nativeResolution(selectedModel); }
         function updateAdaptivePanel(){
+            updateSizeUI();
             const proto = providerProtocol(provider);
             const badge = document.getElementById('providerModeBadge');
             if(badge){
@@ -403,9 +378,9 @@
             const qs = document.getElementById('qualitySelect');
             if(qs) qs.value = quality;
             // RunningHub 每次出图都是一次完整工作流运行，隐藏数量并固定为 1，避免误触发多次昂贵任务。
-            if(proto === 'runninghub') outputCount = 1;
+            if(proto === 'runninghub' || proto === 'comfy') outputCount = 1;
             const cf = document.getElementById('countField');
-            if(cf) cf.style.display = (proto === 'runninghub') ? 'none' : '';
+            if(cf) cf.style.display = (proto === 'runninghub' || proto === 'comfy') ? 'none' : '';
             const cs = document.getElementById('countSelect');
             if(cs) cs.value = String(outputCount);
         }
@@ -414,26 +389,21 @@
 
         async function initModels(){
             try {
-                const cfg = await fetch('/api/config').then(r=>r.json());
-                const imageModels = cfg.image_models || [];
-                models.nano = imageModels.find(m => m.toLowerCase().includes('nano')) || 'nano-banana-pro';
-                models.gpt = imageModels.find(m => !m.toLowerCase().includes('nano')) || cfg.image_model || 'gpt-image-2';
-                apiProviders = Array.isArray(cfg.api_providers) ? cfg.api_providers : [];
-                selectedModel = providerModels(provider)[0] || models.gpt;
-            } catch(e) {}
+                const data = await fetch('/api/providers').then(r => { if(!r.ok) throw new Error('模型配置加载失败'); return r.json(); });
+                apiProviders = data.providers || [];
+                const saved = JSON.parse(localStorage.getItem('studio_image_model') || 'null');
+                if(Array.isArray(saved) && saved.length === 2) [provider, selectedModel] = saved;
+            } catch(e) { console.warn('模型配置加载失败', e); }
             renderProviderControls();
         }
         // API 设置页保存后会广播 studio-api 事件；这里重新拉取 /api/config，
         // 尽量保留当前已选的平台/模型，renderProviderControls 会在其不存在时自动回退。
         async function refreshProvidersFromApiSettings(){
             try {
-                const cfg = await fetch('/api/config').then(r=>r.json());
-                const imageModels = cfg.image_models || [];
-                models.nano = imageModels.find(m => m.toLowerCase().includes('nano')) || 'nano-banana-pro';
-                models.gpt = imageModels.find(m => !m.toLowerCase().includes('nano')) || cfg.image_model || 'gpt-image-2';
-                apiProviders = Array.isArray(cfg.api_providers) ? cfg.api_providers : [];
-            } catch(e) { return; }
-            renderProviderControls();
+                const data = await fetch('/api/providers').then(r => { if(!r.ok) throw new Error('模型配置加载失败'); return r.json(); });
+                apiProviders = data.providers || [];
+                renderProviderControls();
+            } catch(e) { console.warn('模型配置刷新失败', e); }
         }
         let apiSyncTimer = null;
         function scheduleProviderRefresh(){
@@ -447,13 +417,12 @@
         // 页面重新可见时也兜底刷新一次（切回标签页 / iframe 重新展示）
         document.addEventListener('visibilitychange', () => { if(!document.hidden) scheduleProviderRefresh(); });
 
-        function setProvider(next){
-            provider = next;
-            selectedModel = providerModels(provider)[0] || selectedModel;
-            renderProviderControls();
-        }
         function setModel(next){
-            selectedModel = next;
+            const option = modelOptions.find(o => JSON.stringify([o.provider, o.model]) === next);
+            if(!option) return;
+            provider = option.provider; selectedModel = option.model; selectionUnavailable = false;
+            localStorage.setItem('studio_image_model', next);
+            updateAdaptivePanel();
         }
         function escapeHtml(str){ return String(str || '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
 
@@ -471,18 +440,6 @@
             const h = Number(customHeight);
             return w > 0 && h > 0 ? `${Math.round(w)}x${Math.round(h)}` : '';
         }
-        function getImageDimensions(src){
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => resolve({width:img.naturalWidth, height:img.naturalHeight});
-                img.onerror = reject;
-                img.src = src;
-            });
-        }
-        function firstReferenceDimension(){
-            return [1,2,3].map(id => refDims[id]).find(dim => dim?.width && dim?.height) || null;
-        }
-
         function setRatio(next, preferredSize = ''){
             ratio = next;
             if (preferredSize) {
@@ -532,9 +489,13 @@
             const resolutionField = document.getElementById('resolutionField');
             const sizeCustomWidthInput = document.getElementById('sizeCustomWidth');
             const sizeCustomHeightInput = document.getElementById('sizeCustomHeight');
-            const fitImageSizeBtn = document.getElementById('fitImageSizeBtn');
             ratioSelect.value = ratio;
-            ratioSelect.disabled = resolution === 'custom';
+            ratioSelect.disabled = !nativeImageSize() && resolution === 'custom';
+            resolutionField.style.display = nativeImageSize() ? 'none' : '';
+            if (resolutionField.parentElement) resolutionField.parentElement.style.gridTemplateColumns = nativeImageSize() ? 'minmax(0, 1fr)' : '';
+            let note = document.getElementById('nativeSizeNote');
+            if (!note) { note = document.createElement('p'); note.id = 'nativeSizeNote'; note.className = 'text-xs text-gray-500 mt-2'; resolutionField.parentElement.after(note); }
+            note.textContent = nativeImageSize() ? '原生分辨率 · 画幅作为生成要求，实际尺寸以结果为准' : '';
             ratioField.classList.toggle('custom', ratio === 'custom');
             ratioCustomWidthInput.value = customRatioWidth;
             ratioCustomHeightInput.value = customRatioHeight;
@@ -542,23 +503,12 @@
             resolutionField.classList.toggle('custom', resolution === 'custom');
             sizeCustomWidthInput.value = customWidth;
             sizeCustomHeightInput.value = customHeight;
-            if(fitImageSizeBtn) fitImageSizeBtn.disabled = !firstReferenceDimension();
             updateResolutionUI();
         }
 
         function updateResolutionUI(){}
-        function fitCustomSizeToImage(event){
-            if(event) event.preventDefault();
-            const dim = firstReferenceDimension();
-            if(!dim) return;
-            resolution = 'custom';
-            ratio = '';
-            customWidth = dim.width;
-            customHeight = dim.height;
-            updateSizeUI();
-        }
-
         function currentSize(){
+            const resolution = nativeImageSize() ? '1k' : document.getElementById('resolutionSelect').value;
             if(resolution === 'custom') return customSizeValue();
             const options = SIZE_OPTIONS[ratio] || SIZE_OPTIONS.square;
             if(ratio === 'custom'){
@@ -577,57 +527,24 @@
             return match[0];
         }
 
-        [1,2,3].forEach(id => {
-            const zone = document.getElementById(`drop-zone-${id}`);
-            zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag-over'); };
-            zone.ondragleave = () => zone.classList.remove('drag-over');
-            zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0], id); };
-        });
-        window.addEventListener('paste', e => {
-            const item = [...(e.clipboardData?.items || [])].find(x => x.kind === 'file' && x.type.startsWith('image/'));
-            if (item) handleFile(item.getAsFile(), firstEmptySlot());
-        });
-        function firstEmptySlot(){ return [1,2,3].find(id => !refs[id]) || 1; }
-
-        async function handleFile(file, index){
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = e => {
-                const prev = document.getElementById(`prev${index}`);
-                prev.src = e.target.result; prev.classList.remove('hidden');
-                document.getElementById(`del${index}`).classList.remove('hidden');
-                getImageDimensions(e.target.result).then(dim => {
-                    refDims[index] = dim;
-                    updateSizeUI();
-                }).catch(() => {});
-            };
-            reader.readAsDataURL(file);
-            const form = new FormData();
-            form.append('files', file);
-            const data = await fetch('/api/ai/upload', {method:'POST', body:form}).then(r=>r.json());
-            refs[index] = data.files[0];
-        }
-        function clearSlot(index, ev){
-            if(ev) ev.stopPropagation();
-            refs[index] = null;
-            refDims[index] = null;
-            document.getElementById(`prev${index}`).src = '';
-            document.getElementById(`prev${index}`).classList.add('hidden');
-            document.getElementById(`del${index}`).classList.add('hidden');
-        }
-
         async function submitImage(){
             const prompt = document.getElementById('promptInput').value.trim();
             if(!prompt){ alert(tr('online.promptRequired')); return; }
+            if(selectionUnavailable || !providerById(provider)){ alert('请选择可用模型'); return; }
             const btn = document.getElementById('genBtn'), loader = document.getElementById('loader'), placeholder = document.getElementById('placeholder'), out = document.getElementById('outputImg'), dl = document.getElementById('downloadBtn');
             btn.disabled = true; placeholder.classList.add('hidden'); out.classList.add('hidden'); dl.classList.add('hidden'); loader.classList.remove('hidden');
             try {
-                const reqBody = { prompt, provider_id:provider, model:selectedModel, size:currentSize(), n:outputCount, reference_images:Object.values(refs).filter(Boolean) };
+                const reqBody = { prompt, provider_id:provider, model:selectedModel, size:currentSize(), n:outputCount, operation:'generate' };
                 if(QUALITY_PROTOCOLS.has(providerProtocol(provider))) reqBody.quality = quality;
-                const result = await fetch('/api/online-image', {
+                const local = provider === 'local-comfy';
+                const dimensions = parseSizeValue(currentSize());
+                if(local && !dimensions) throw new Error('请选择有效的输出尺寸');
+                const body = local ? {prompt, width:Number(dimensions.width), height:Number(dimensions.height), workflow_json:'Z-Image.json', type:'zimage', client_id:localStorage.getItem('client_id') || ''} : reqBody;
+                const result = await fetch(local ? '/api/generate' : '/api/online-image', {
                     method:'POST', headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify(reqBody)
+                    body:JSON.stringify(body)
                 }).then(async r => { if(!r.ok) throw new Error((await r.json()).detail || '生成失败'); return r.json(); });
+                if(result.error || !result.images?.length) throw new Error(result.error || '未返回图片');
                 currentResult = result; out.src = result.images[0]; out.classList.remove('hidden'); dl.href = result.images[0]; dl.classList.remove('hidden'); renderImageCard(result, true);
             } catch(err) {
                 alert(err.message || 'Generation failed'); placeholder.classList.remove('hidden');
@@ -651,13 +568,29 @@
             lucide.createIcons();
         }
         async function loadHistory(page=0){
-            if(isLoading) return; isLoading = true;
+            if(isLoading) return;
+            isLoading = true;
             const loader = document.getElementById('loadMoreTrigger');
-            if(page === 0){ loader.innerText = tr('online.loadingArchives'); allHistory = await fetch('/api/history?type=online').then(r=>r.json()); document.getElementById('masonry').innerHTML=''; currentIndex=0; }
-            const next = allHistory.slice(currentIndex, currentIndex + PAGE_SIZE);
-            next.forEach(item => renderImageCard(item)); currentIndex += next.length;
-            loader.classList.toggle('hidden', currentIndex >= allHistory.length);
-            loader.innerText = tr('online.loadMore'); isLoading = false;
+            try {
+                if(page === 0){
+                    loader.innerText = tr('online.loadingArchives');
+                    allHistory = (await Promise.all(['online','zimage'].map(type => fetch(`/api/history?type=${type}`).then(r => {
+                        if(!r.ok) throw new Error('历史加载失败');
+                        return r.json();
+                    })))).flat().sort((a,b) => Number(b.timestamp) - Number(a.timestamp));
+                    document.getElementById('masonry').innerHTML = '';
+                    currentIndex = 0;
+                }
+                const next = allHistory.slice(currentIndex, currentIndex + PAGE_SIZE);
+                next.forEach(item => renderImageCard(item)); currentIndex += next.length;
+                loader.classList.toggle('hidden', currentIndex >= allHistory.length);
+                loader.innerText = tr('online.loadMore');
+                loader.onclick = () => loadHistory(1);
+            } catch(error){
+                loader.classList.remove('hidden');
+                loader.innerText = '历史加载失败，点击重试';
+                loader.onclick = () => loadHistory(0);
+            } finally { isLoading = false; }
         }
         let lightboxPreview = null;
         function ensureLightboxPreview(){
@@ -707,15 +640,6 @@
         function applySameStyle(){
             if(!currentLightboxData) return;
             document.getElementById('promptInput').value = currentLightboxData.prompt || '';
-            [1,2,3].forEach(id => clearSlot(id));
-            (currentLightboxData.params?.reference_images || []).slice(0,3).forEach((ref,i) => {
-                refs[i+1] = ref; const prev = document.getElementById(`prev${i+1}`);
-                prev.src = ref.url; prev.classList.remove('hidden'); document.getElementById(`del${i+1}`).classList.remove('hidden');
-                getImageDimensions(ref.url).then(dim => {
-                    refDims[i+1] = dim;
-                    updateSizeUI();
-                }).catch(() => {});
-            });
             const size = currentLightboxData.params?.size || '1024x1024';
             const matchedRatio = Object.keys(SIZE_OPTIONS).find(key => SIZE_OPTIONS[key].some(([value]) => value === size)) || 'square';
             const matchedRes = SIZE_OPTIONS[matchedRatio]?.find(([value]) => value === size)?.[1];
@@ -738,7 +662,7 @@
             if(res.success) document.getElementById(`history-${ts}`)?.remove();
         }
         const observer = new IntersectionObserver(entries => { if(entries[0].isIntersecting && currentIndex < allHistory.length) loadHistory(1); }, {threshold:.1});
-        window.onload = async () => { applyLanguage(); setRatio('square'); setResolution('1k'); await initModels(); await loadHistory(0); window.HistoryBulkManager?.attach({masonry:'#masonry'}); observer.observe(document.getElementById('loadMoreTrigger')); document.getElementById('loadMoreTrigger').onclick = () => loadHistory(1); };
+        window.onload = async () => { applyLanguage(); setRatio('square'); setResolution('1k'); await initModels(); await loadHistory(0); window.HistoryBulkManager?.attach({masonry:'#masonry'}); observer.observe(document.getElementById('loadMoreTrigger'));  };
     </script>
 </body>
 </html>
