@@ -5437,6 +5437,8 @@ function measureCanvasOriginalImageNodes(root=nodesEl){
 }
 
 function render(){
+    const start=document.getElementById('canvasStart');
+    if(start)start.hidden=!canvas || nodes.length>0;
     const outputScrolls = captureOutputScrolls();
     const mediaStates = captureMediaPlaybackStates();
     const reusableMediaNodes = new Map();

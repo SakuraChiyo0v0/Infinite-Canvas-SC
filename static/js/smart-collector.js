@@ -71,6 +71,7 @@ function collectGeneratedImages(source, images, kind='image'){
                 batch:source.collectorBatch || new Date().toISOString().replace(/\D/g, '').slice(0,14),
                 sequence:target.entries.reduce((max, e) => Math.max(max, Number(e.sequence) || 0), 0) + 1,
                 createdAt:Date.now()};
+            if(img.provenance) entry.provenance = JSON.parse(JSON.stringify(img.provenance));
             target.entries.push(entry);
             saveCollectorEntry(target, entry);
         });

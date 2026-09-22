@@ -64,6 +64,8 @@
     function create(options) {
         const {selectId, hintId, wrapId, storageKey, localModel, onChange} = options;
         let providers = [];
+        let loadError = '';
+        let explicitSelection = false;
         let selectedKey = localStorage.getItem(`${storageKey}:model`) || '';
         const localEnabled = () => global.StudioImageCapabilities?.localEnabled() === true;
         const choices = () => [
@@ -73,7 +75,7 @@
         const key = p => JSON.stringify([p.id, p.image_models[0]]);
         const selected = () => choices().find(p => key(p) === selectedKey) || null;
         function render(){
-            if (!selectedKey || (!localEnabled() && selectedKey.startsWith('["local-comfy",'))) {
+            if (!selectedKey || (!explicitSelection && !localEnabled() && selectedKey.startsWith('["local-comfy",'))) {
                 const first = choices().find(p => !p.local) || choices()[0];
                 selectedKey = first ? key(first) : '';
                 if (selectedKey) localStorage.setItem(`${storageKey}:model`, selectedKey);
@@ -81,8 +83,8 @@
             const wrap = document.getElementById(wrapId), picker = document.getElementById(selectId), hint = document.getElementById(hintId);
             if(!wrap || !picker) return;
             wrap.classList.remove('hidden');
-            picker.innerHTML = `<select class="cli-size-select" aria-label="模型">${selected() ? '' : '<option value="" selected disabled>原模型不可用，请重新选择</option>'}${choices().map(p => `<option value="${escapeHtml(key(p))}" ${key(p) === selectedKey ? 'selected' : ''}>${escapeHtml(p.image_models[0])} · ${escapeHtml(p.name || p.id)}</option>`).join('')}</select>`;
-            if(hint) hint.textContent = '';
+            picker.innerHTML = `<select class="cli-size-select" aria-label="模型">${selected() ? '' : `<option value="" selected disabled>${loadError ? '模型加载失败' : choices().length ? '原模型不可用，请重新选择' : '尚未配置可用模型'}</option>`}${choices().map(p => `<option value="${escapeHtml(key(p))}" ${key(p) === selectedKey ? 'selected' : ''}>${escapeHtml(p.image_models[0])} · ${escapeHtml(p.name || p.id)}</option>`).join('')}</select>`;
+            if(hint) hint.textContent = loadError || (!selected() ? (choices().length ? '请明确选择替代模型，原选择不会自动替换。' : '请先在 API 设置中配置图像模型。') : '');
             picker.querySelector('select').onchange = event => {
                 selectedKey = event.target.value; localStorage.setItem(`${storageKey}:model`, selectedKey);
                 onChange?.(selected()?.local ? 'local' : 'cli');
@@ -95,14 +97,17 @@
                 if(!response.ok) throw new Error('模型配置加载失败');
                 const data = await response.json();
                 providers = eligibleProviders(data.providers || []);
-            } catch(error) { console.warn('模型配置加载失败', error); }
+                loadError = '';
+            } catch(error) { loadError = '模型配置加载失败，请重试。'; console.warn('模型配置加载失败', error); }
             render();
             onChange?.(selected()?.local ? 'local' : 'cli');
         }
         window.addEventListener('message', event => { if(event.data?.type === 'providers-changed') refresh(); });
         window.addEventListener('studio-lang-change', render);
         window.addEventListener('studio-local-comfy-change', () => { render(); onChange?.(selected()?.local ? 'local' : 'cli'); });
-        return {refresh, selected, setActive(){ render(); }};
+        return {refresh, selected, choices, status:()=>({error:loadError, unavailable:!selected(), empty:!choices().length}),
+            select(provider, model){ explicitSelection=true; selectedKey=JSON.stringify([provider,model]); localStorage.setItem(`${storageKey}:model`,selectedKey); render(); onChange?.(selected()?.local?'local':'cli'); return !!selected(); },
+            setActive(){ render(); }};
     }
 
     function createSizeControl(options) {
@@ -224,6 +229,25 @@
         window.addEventListener('studio-lang-change', render);
         return {
             value,
+            setValue(size) {
+                const text = String(size ?? '').trim();
+                const named = ratios[text];
+                const pixels = text.match(/^(\d+)\s*[xX*]\s*(\d+)$/);
+                const aspect = text.match(/^(\d+)\s*:\s*(\d+)$/);
+                const pair = named || (pixels || aspect)?.slice(1).map(Number);
+                // Old records may contain auto/None or no size; retain the existing valid selection.
+                if (!pair || !pair.every(n => Number.isFinite(n) && n > 0)) return false;
+                const [width, height] = pair;
+                const preset = Object.entries(ratios).find(([, [w, h]]) => Math.abs(width / height - w / h) < 0.000001)?.[0];
+                ratio = preset || 'custom'; customRatioWidth = width; customRatioHeight = height;
+                if (pixels && !nativeSize()) {
+                    customWidth = width; customHeight = height; resolution = 'custom';
+                } else {
+                    // Native models accept an aspect intent, not a promised pixel resolution.
+                    resolution = '1k';
+                }
+                persist(); render(); return true;
+            },
             setActive(value) {
                 active = Boolean(value);
                 render();

@@ -1566,3 +1566,5 @@ html[data-studio-scale="off"].studio-scale-managed .toolbar.scale-expanded .tool
         margin-left:0;
     }
 }
+
+.canvas-start{position:absolute;z-index:4;left:50%;top:38%;transform:translate(-50%,-50%);width:min(520px,calc(100% - 40px));padding:26px;border:1px solid var(--border,#e2e8f0);border-radius:20px;background:var(--panel-bg,#fff);color:var(--text,#172033);box-shadow:0 10px 40px #0f172a0a;cursor:default}.canvas-start[hidden]{display:none}.canvas-start h2{font-size:22px;margin:0 0 12px}.canvas-start p{font-size:14px;line-height:1.8;color:var(--muted,#64748b)}.canvas-start>div{display:flex;gap:8px;flex-wrap:wrap}.canvas-start button{padding:10px 14px;border:1px solid var(--border,#cbd5e1);border-radius:10px;background:var(--panel-bg,#fff);color:inherit;cursor:pointer}.canvas-start button:first-child{background:#172033;color:#fff}.canvas-start .canvas-start-hint{font-size:12px;margin-bottom:0}

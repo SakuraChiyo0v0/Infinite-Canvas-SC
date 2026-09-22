@@ -6,22 +6,23 @@
     <link rel="icon" href="/static/images/logo.png">
     <script src="/static/js/theme.js?v=2026.08.28.1789976811"></script>
     <link rel="stylesheet" href="/static/css/theme.css?v=2026.08.28.1789984628">
-    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.08.28.1790043811">
-    <link rel="stylesheet" href="/static/css/prompt-workbench.css?v=2026.08.28.1790055541">
-    <link rel="stylesheet" href="/static/css/characters.css?v=2026.09.22.ux1">
+    <link rel="stylesheet" href="/static/css/asset-manager.css?v=2026.08.28.1790080714">
+    <link rel="stylesheet" href="/static/css/prompt-workbench.css?v=2026.08.28.1790080615">
+    <link rel="stylesheet" href="/static/css/characters.css?v=2026.08.28.1790081147">
 </head>
 <body class="characters-page">
     <main class="asset-page">
-        <header class="asset-page-head"><div><h1 class="asset-title">CHARACTERS / 角色</h1><p class="asset-sub">保存角色设定，搭配模板开始创作。</p></div><div class="asset-head-actions"><span id="characterStatus" role="status">准备就绪</span><button class="asset-btn" id="characterRefresh">刷新</button></div></header>
+        <header class="asset-page-head"><div><h1 class="asset-title">CHARACTERS / 角色</h1><p class="asset-sub">保存角色设定，直接写任务或搭配模板开始创作。</p></div><div class="asset-head-actions"><span id="characterStatus" role="status">准备就绪</span><button class="asset-btn" id="characterRefresh">刷新</button></div></header>
         <div class="character-layout">
             <aside class="asset-panel asset-nav"><div class="panel-head"><strong>我的角色</strong><button class="asset-btn primary" id="characterNew">＋ 新建</button></div><div class="character-filter"><input id="characterSearch" type="search" placeholder="搜索角色" aria-label="搜索角色"><label><input type="checkbox" id="characterArchived">显示已归档</label></div><div id="characterList" class="nav-scroll"></div></aside>
             <section class="asset-panel asset-content" id="characterProfile" aria-label="角色资料"></section>
-            <section class="asset-panel asset-content character-create"><div class="character-template"><label>搭配提示词模板<select id="characterTemplate"><option value="">选择一个模板</option></select></label></div><div class="asset-detail" id="characterWorkbench"></div></section>
+            <section class="asset-panel asset-content character-create"><div class="character-template"><button id="characterFreeCreate" class="asset-btn primary" type="button">自由创作</button><label>查找模板<input id="characterTemplateSearch" type="search" placeholder="搜索名称、用途或正文"></label><label>模板用途<select id="characterTemplatePurpose"><option value="">全部用途</option><option value="generate">文生图</option><option value="edit">需要参考图</option><option value="free">自由创作</option></select></label><label>搭配提示词模板（可选）<select id="characterTemplate"><option value="">自由创作 · 直接填写本次任务</option></select></label><span id="characterTemplateCount" class="pw-note" role="status"></span></div><div class="asset-detail" id="characterWorkbench"></div></section>
         </div>
         <section class="character-archive"><h2>WORKS <span>角色作品</span></h2><p class="pw-note">自动汇集该角色的生成结果，保留使用的模板和角色资料。</p><div id="characterWorks"></div></section>
     </main>
-    <script src="/static/js/prompt-creation-core.js?v=2026.08.28.1790056256"></script>
-    <script src="/static/js/prompt-workbench.js?v=2026.08.28.1790055943"></script>
-    <script src="/static/js/characters.js?v=2026.09.22.ux1"></script>
+    <script src="/static/js/prompt-creation-core.js?v=2026.08.28.1790081428"></script>
+    <script src="/static/js/creation-flow.js?v=2026.08.28.1790082362"></script>
+    <script src="/static/js/prompt-workbench.js?v=2026.08.28.1790081147"></script>
+    <script src="/static/js/characters.js?v=2026.08.28.1790081244"></script>
 </body>
 </html>

@@ -1572,3 +1572,24 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .smart-group-summary i,.smart-group-summary svg { width:13px; height:13px; }
 .smart-group-empty { flex:1 1 auto; min-height:74px; display:flex; align-items:center; justify-content:center; gap:6px; color:var(--faint); font-size:10px; font-weight:700; text-align:center; border-radius:10px; border:1px dashed var(--line); background:var(--soft); }
 .smart-group-empty i,.smart-group-empty svg { width:14px; height:14px; }
+
+/* Explicit creation context and conflicting reference identities. */
+.creation-reference-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:var(--soft); color:var(--text); cursor:pointer; white-space:nowrap; }
+.creation-reference-btn svg { width:16px; height:16px; }
+.creation-reference-btn:focus-visible,.canvas-lineage-dialog button:focus-visible,.canvas-lineage-dialog select:focus-visible { outline:2px solid #3b82f6; outline-offset:3px; }
+.canvas-lineage-dialog { width:min(480px,calc(100vw - 32px)); max-height:85vh; overflow:auto; padding:24px; border:1px solid var(--line); border-radius:16px; background:var(--card); color:var(--text); }
+.canvas-lineage-dialog::backdrop { background:#0008; }
+.canvas-lineage-dialog h2 { font-size:18px; margin:0 0 12px; }
+.canvas-lineage-dialog p { font-size:14px; line-height:1.6; }
+.canvas-lineage-dialog select { width:100%; padding:10px; margin:8px 0 16px; background:var(--soft); color:var(--text); border:1px solid var(--line); border-radius:8px; }
+.canvas-lineage-dialog button { padding:10px 12px; margin:4px 8px 0 0; background:var(--strong); color:var(--strong-text); border-radius:8px; cursor:pointer; }
+.canvas-lineage-dialog button:disabled { opacity:.45; cursor:not-allowed; }
+
+.smart-empty-state { position:absolute; z-index:31; left:50%; top:50%; transform:translate(-50%,-50%); width:min(400px,calc(100vw - 40px)); padding:26px; border:1px solid var(--line); border-radius:18px; background:var(--panel); box-shadow:0 16px 40px var(--shadow); text-align:center; cursor:default; }
+.smart-empty-state[hidden] { display:none; }
+.smart-empty-state h1 { margin:0 0 10px; font-size:20px; }
+.smart-empty-state p { margin:0 0 18px; color:var(--muted); font-size:13px; line-height:1.65; }
+.smart-empty-state button { min-height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 18px; border-radius:10px; background:var(--strong); color:var(--strong-text); font-size:13px; font-weight:650; }
+.smart-empty-state button svg { width:17px; height:17px; }
+.smart-empty-state button:focus-visible { outline:2px solid var(--text); outline-offset:4px; }
+.smart-empty-state .smart-empty-hint { margin:16px 0 0; font-size:12px; }

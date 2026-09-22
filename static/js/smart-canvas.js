@@ -1658,6 +1658,7 @@ function mediaLayoutSize(img){
 }
 function copyMediaSizeFields(source, target={}){
     if(!source || typeof source !== 'object') return target;
+    if(source.provenance && !target.provenance) target.provenance = JSON.parse(JSON.stringify(source.provenance));
     ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
         const n = Number(source[key]);
         if(Number.isFinite(n) && n > 0) target[key] = n;
@@ -4749,7 +4750,7 @@ function renderPromptTemplatePanel(options={}){
                     <button type="button" class="primary" data-template-edit-save><i data-lucide="save"></i><span>${escapeHtml(tr('common.save'))}</span></button>
                 ` : `
                     <button type="button" data-template-apply="positive"><i data-lucide="corner-down-left"></i><span>${escapeHtml(tr('smart.tplApplyPositive'))}</span></button>
-                    <button type="button" class="primary" data-template-apply="full"><i data-lucide="wand-sparkles"></i><span>${escapeHtml(tr('smart.tplApplyFull'))}</span></button>
+                    <button type="button" class="primary" data-template-apply="full"><i data-lucide="wand-sparkles"></i><span>正文及参数说明（不改模型）</span></button>
                 `}
             </div>
             ` : `<div class="prompt-template-empty">${escapeHtml(tr('smart.tplPickOrCreate'))}</div>`}
@@ -4798,7 +4799,11 @@ function closePromptTemplatePanel(){
 function applyPromptTemplateToNode(mode='positive'){
     const template = promptTemplateItems().find(item => item.id === promptTemplateSelectedId);
     if(!template) return;
+    if(mode==='full')toast('已填入正文和参数说明；当前模型与画幅保持不变。');
+    const source={libraryId:activePromptLibraryId,itemId:template.sourceId || template.id,name:template.name || '模板'};
     if(promptTemplatePanel?.dataset.target === 'composer'){
+        const selected=activeComposerNode() || selectedNode();
+        if(selected) selected.promptSource=source;
         const text = promptTemplateText(template, mode);
         setPromptText(text);
         delete promptInput.dataset.preserveDraftOnce;
@@ -4811,6 +4816,7 @@ function applyPromptTemplateToNode(mode='positive'){
     const node = nodes.find(n => n.id === promptTemplatePanel?.dataset.nodeId);
     if(!node) return;
     node.text = promptTemplateText(template, mode);
+    node.promptSource=source;
     node.promptPresetId = template.builtin ? '' : template.sourceId || '';
     closePromptTemplatePanel();
     render();
@@ -5860,11 +5866,11 @@ function bindWorkflowAssetItemEvents(){
         };
     });
 }
-async function addUrlToAssetLibrary(url, name=''){
-    if(assetLibraryIsLocal()) return addUrlToLocalAssetLibrary(url, name);
+async function addUrlToAssetLibrary(url, name='', provenance=null){
+    if(assetLibraryIsLocal()) return addUrlToLocalAssetLibrary(url, name, provenance);
     const cat = activeAssetCategory();
     if(!cat){ toast(tr('smart.assetNoFolder')); return; }
-    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:activeAssetLibraryId, category_id:cat.id, url, name})}).then(async r => {
+    const data = await fetch('/api/asset-library/items', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:activeAssetLibraryId, category_id:cat.id, url, name, provenance})}).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
     });
@@ -5904,7 +5910,7 @@ async function addUrlItemsToLocalAssetLibrary(items=[]){
     const data = await fetch('/api/local-assets/import-urls', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url)}))})
+        body:JSON.stringify({folder:localAssetFolderPath(), items:list.map(item => ({url:item.url, name:item.name || smartImageNameFromUrl(item.url), provenance:item.provenance || null}))})
     }).then(async r => {
         if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || tr('smart.assetAddFail'));
         return r.json();
@@ -5914,8 +5920,8 @@ async function addUrlItemsToLocalAssetLibrary(items=[]){
     toast(`已保存 ${data.count || 0} 个本地素材`);
     return data.files || [];
 }
-async function addUrlToLocalAssetLibrary(url, name=''){
-    return addUrlItemsToLocalAssetLibrary([{url, name:name || smartImageNameFromUrl(url)}]);
+async function addUrlToLocalAssetLibrary(url, name='', provenance=null){
+    return addUrlItemsToLocalAssetLibrary([{url, name:name || smartImageNameFromUrl(url), provenance}]);
 }
 async function deleteLocalAssetFromPanel(itemId){
     const item = (activeAssetCategory()?.items || []).find(x => x.id === itemId)
@@ -6599,6 +6605,7 @@ function resultMediaUrls(result){
                 const url = value.url || value.path || value.src || value.uri;
                 if(url){
                     const item = {url, kind:value.kind || value.type || value.mediaKind || '', name:value.name || value.filename || ''};
+                    if(value.provenance) item.provenance = JSON.parse(JSON.stringify(value.provenance));
                     ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
                         const n = Number(value[key]);
                         if(Number.isFinite(n) && n > 0) item[key] = n;
@@ -8359,6 +8366,7 @@ function rememberInlineVideoActivations(){
     });
 }
 function render(){
+    syncSmartEmptyState();
     const collectorInput = document.activeElement?.closest?.('.collector-body input');
     const collectorFocus = collectorInput ? {id:collectorInput.closest('.image-node')?.dataset.id,
         field:collectorInput.dataset.collectorField, start:collectorInput.selectionStart, end:collectorInput.selectionEnd} : null;
@@ -8367,9 +8375,8 @@ function render(){
     world.classList.toggle('smart-multi-selected', selectedNodeIds().length > 1);
     const composerEl = composer;
     const mediaStates = captureMediaPlaybackStates();
-    // 用户正在提示词框(contenteditable)输入时,本次重渲染不要移动 composer:
-    // 移动 DOM 节点会打断输入法合成会话,导致输入中断(即使保留焦点描边也接不上)。
-    const promptHadFocus = document.activeElement === promptInput;
+    // composer 内的原生鼠标点击、键盘焦点和输入法会话都依赖 DOM 不被重新挂载。
+    // 重绘只替换画布节点，保留整个输入面板及其交互生命周期。
     const reusableNodes = new Map();
     world.querySelectorAll('.image-node').forEach(el => {
         const node = nodes.find(n => n.id === el.dataset.id);
@@ -8429,9 +8436,8 @@ function render(){
     [...world.childNodes].forEach(child => {
         if(!keepEls.has(child)) child.remove();
     });
-    // 用户正在提示词框输入时不要移动 composer:移动 DOM 会打断输入法合成、中断输入。
-    // composer 已在 keepEls 中(未被移除),不重排也不影响显示(z-index 固定)。
-    if(composerEl && !promptHadFocus) world.appendChild(composerEl);
+    // 已挂载的 composer 由 keepEls 保留，z-index 固定，无需随节点重排。
+    if(composerEl && composerEl.parentNode !== world) world.appendChild(composerEl);
     world.insertAdjacentHTML('beforeend', renderConnections());
     nodeHtmlEntries.forEach(entry => {
         const fresh = renderedNodeEls.get(entry.node.id);
@@ -12933,6 +12939,14 @@ function scheduleComposerUpdate(delay=120){
         updateComposer();
     }, Math.max(0, Number(delay) || 0));
 }
+function syncSmartEmptyState(){
+    const card=document.getElementById('smartEmptyState');
+    if(card) card.hidden=nodes.length!==0;
+}
+function setComposerOpen(open){
+    composer.classList.toggle('open', Boolean(open));
+    composer.inert=!open;
+}
 function updateComposer(){
     if(composerUpdateTimer){
         clearTimeout(composerUpdateTimer);
@@ -12942,7 +12956,7 @@ function updateComposer(){
     const node = selectedNode();
     syncRunButtonState(node);
     if(smartCascadeSilentSelection && !activeComposerSubject){
-        composer.classList.remove('open');
+        setComposerOpen(false);
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         activeComposerSubject = null;
         lastComposerNodeId = '';
@@ -12950,18 +12964,18 @@ function updateComposer(){
     }
     if(node?.type === 'smart-minimax'){
         savePromptDraftForCurrent();
-        composer.classList.remove('open');
+        setComposerOpen(false);
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         activeComposerSubject = null;
         lastComposerNodeId = '';
         setPromptInputLocked(false);
         return;
     }
-    composer.classList.toggle('open', !!node);
+    setComposerOpen(!!node);
     if(!isSmartRunnableNode(node)){
         if(cascadeRunBtn) cascadeRunBtn.style.display = 'none';
         savePromptDraftForCurrent();
-        composer.classList.remove('open');
+        setComposerOpen(false);
         activeComposerSubject = null;
         lastComposerNodeId = '';
         setPromptInputLocked(false);
@@ -13693,7 +13707,7 @@ function mentionTokenHtml(img){
     const kind = mediaKindForItem(img);
     const name = img.alias || img.name || (kind === 'audio' ? '音频' : kind === 'video' ? '视频' : '图片');
     const media = mentionTokenMediaHtml(img, kind);
-    return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}">${media}<span>${escapeHtml(name)}</span></span>`;
+    return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}" data-provenance="${escapeHtml(JSON.stringify(img.provenance || null))}">${media}<span>${escapeHtml(name)}</span></span>`;
 }
 function mentionTokenMediaHtml(img, kind=mediaKindForItem(img)){
     if(kind === 'audio'){
@@ -13731,14 +13745,41 @@ function promptHtmlWithMentionTokens(text, refs=[]){
     }
     return html;
 }
+function smartTemplateSource(node){
+    const sources=[node?.promptSource, ...promptInputNodesFor(node).map(input=>input.promptSource)].filter(Boolean);
+    const unique=[...new Map(sources.map(source=>[JSON.stringify(source),source])).values()];
+    return unique.length===1 ? unique[0] : null;
+}
+async function chooseSmartRunLineage(node, refs){
+    const source=smartTemplateSource(node);
+    const lineage=await CanvasLineage.choose(CanvasLineage.enrich(refs,nodes),source);
+    if(lineage && source) lineage.source=JSON.parse(JSON.stringify(source));
+    return lineage;
+}
+async function addCreationReference(){
+    try {
+        const picked=await CreationFlow.pickReference();
+        if(!picked?.references?.length)return;
+        const target=selectedNode();
+        const point=viewportCenter();
+        pushUndo();
+        const images=picked.references.map(ref=>({...ref,kind:'image',provenance:{...(picked.provenance || ref.provenance || {}),character:picked.character || picked.provenance?.character || ref.provenance?.character || null}}));
+        const reference=createImageNodeAt(point,images,{select:!target,skipUndo:true});
+        if(!reference)return;
+        reference.title=picked.character ? `角色：${picked.character.name}` : '创作参考图';
+        if(target && target.id!==reference.id){connectInputNode(reference.id,target.id);selectedId=target.id;}
+        render();scheduleSave();
+        toast(picked.character ? `已加入角色 ${picked.character.name} 的设定图，运行时保留身份。` : '已加入参考图，填写要求后再运行。');
+    } catch(error){toast(error.message || '参考图选择失败');}
+}
 function snapshotRunMeta(prompt, sourceId, displayPrompt='', refs=[]){
     return {
         prompt,
         displayPrompt:displayPrompt || promptPlainText() || prompt,
         promptHtml: promptInput ? promptInput.innerHTML : '',
         promptText: promptPlainText(),
-        promptRefs:(refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? ''})).filter(ref => ref.url),
-        inputRefs:(refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? '', kind:ref.kind || ''})).filter(ref => ref.url),
+        promptRefs:CanvasLineage.enrich(refs, nodes).filter(ref => ref.url),
+        inputRefs:CanvasLineage.enrich(refs, nodes).filter(ref => ref.url),
         sourceNodeId:sourceId,
         settings:JSON.parse(JSON.stringify(settings)),
         createdAt:Date.now()
@@ -13747,10 +13788,12 @@ function snapshotRunMeta(prompt, sourceId, displayPrompt='', refs=[]){
 function attachRunMeta(targetNode, meta){
     if(!targetNode || !meta) return;
     delete targetNode.provenance;
+    targetNode.runLineage = meta.lineage || null;
     targetNode.runPrompt = meta.displayPrompt || meta.promptText || meta.prompt;
     targetNode.runModelPrompt = meta.prompt;
     targetNode.runPromptRefs = meta.promptRefs || [];
     targetNode.runInputRefs = (meta.inputRefs || meta.promptRefs || []).map(ref => ({
+        ...ref,
         url:ref.url || '',
         name:ref.name || '',
         nodeId:ref.nodeId || '',
@@ -13774,9 +13817,7 @@ function attachRunMeta(targetNode, meta){
     });
 }
 function imageRunProvenance(meta, url){
-    const config = meta.settings || {};
-    const refs = meta.inputRefs || meta.promptRefs || [];
-    return JSON.parse(JSON.stringify({version:1,resultId:`${meta.createdAt}:${url}`,prompt:meta.prompt || '',model:config.model || config.apiModel || '',provider:config.provider_id || '',size:config.size || `${config.width || 1024}x${config.height || 1024}`,operation:refs.length?'edit':'generate',references:refs,createdAt:meta.createdAt || Date.now()}));
+    return CanvasLineage.result(meta, url);
 }
 function stripRunInputMeta(meta){
     if(!meta) return meta;
@@ -14238,6 +14279,7 @@ function assetMentionCandidateImages(categoryId=''){
         role:'asset',
         categoryName:item.categoryName || '',
         asset_uris:assetRegisteredUris(item),
+        provenance:item.provenance || null,
         mentionId:`asset_${index}_${Math.random().toString(36).slice(2, 7)}`
     }));
 }
@@ -14531,6 +14573,7 @@ function insertMentionToken(img){
     token.dataset.nodeId = img.nodeId || '';
     token.dataset.imageIndex = String(img.imageIndex ?? '');
     token.dataset.assetUris = JSON.stringify(img.asset_uris || {});
+    if(img.provenance)token.dataset.provenance=JSON.stringify(img.provenance);
     token.innerHTML = `${mentionTokenMediaHtml(img, token.dataset.kind)}<span>${escapeHtml(token.dataset.name)}</span>`;
     range.insertNode(token);
     bindSmartPreviewImageFallbacks(token);
@@ -14553,10 +14596,12 @@ function collectPromptParts(){
         }
         if(node.nodeType !== Node.ELEMENT_NODE) return;
         if(node.classList?.contains('mention-image-token')){
+            let provenance=null;
+            try {provenance=JSON.parse(node.dataset.provenance || 'null');} catch(_) {}
             let assetUris = {};
             try { assetUris = JSON.parse(node.dataset.assetUris || '{}') || {}; } catch(e) { assetUris = {}; }
             const kind = node.dataset.kind || 'image';
-            parts.push({type:'image', kind, url:node.dataset.url || '', name:node.dataset.name || (kind === 'audio' ? '音频' : '图片'), nodeId:node.dataset.nodeId || '', imageIndex:Number(node.dataset.imageIndex || 0), asset_uris:assetUris});
+            parts.push({type:'image', kind, url:node.dataset.url || '', name:node.dataset.name || (kind === 'audio' ? '音频' : '图片'), nodeId:node.dataset.nodeId || '', imageIndex:Number(node.dataset.imageIndex || 0), asset_uris:assetUris, provenance});
             return;
         }
         if(node.tagName === 'BR'){
@@ -14614,7 +14659,7 @@ function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=fal
                 return;
             }
             refMap.set(part.url, refs.length + 1);
-            refs.push({url:part.url, name:part.name || `图${refs.length + 1}`, nodeId:part.nodeId, imageIndex:part.imageIndex, kind:part.kind || 'image', asset_uris:part.asset_uris || {}, role:`image_${refs.length + 1}`});
+            refs.push({provenance:part.provenance || null, url:part.url, name:part.name || `图${refs.length + 1}`, nodeId:part.nodeId, imageIndex:part.imageIndex, kind:part.kind || 'image', asset_uris:part.asset_uris || {}, role:`image_${refs.length + 1}`});
         }
         body += `图${refMap.get(part.url)}`;
     });
@@ -14631,14 +14676,14 @@ function buildPromptRequest(node, overrideDefaultImages=null, consumeDefault=fal
         return {
             prompt:`${tr('smart.refMapHeader')}\n${mapText}\n\n${tr('smart.refUserNeed')}\n${body}`,
             displayPrompt,
-            refs:refs.map((img, index) => ({url:img.url, name:img.name || `图${index + 1}`, kind:img.kind || mediaKindForItem(img), asset_uris:img.asset_uris || {}, role:`image_${index + 1}`})),
+            refs:CanvasLineage.enrich(refs, nodes).map((img, index) => ({...img, name:img.name || `图${index + 1}`, kind:img.kind || mediaKindForItem(img), role:`image_${index + 1}`})),
             mentioned:true
         };
     }
     return {
         prompt:body,
         displayPrompt,
-        refs:refs.map((img, index) => ({url:img.url, name:img.name || `图${index + 1}`, kind:img.kind || mediaKindForItem(img), asset_uris:img.asset_uris || {}, role:`image_${index + 1}`})),
+        refs:CanvasLineage.enrich(refs, nodes).map((img, index) => ({...img, name:img.name || `图${index + 1}`, kind:img.kind || mediaKindForItem(img), role:`image_${index + 1}`})),
         mentioned:false
     };
 }
@@ -15457,13 +15502,13 @@ function buildPromptRequestForNode(node, defaultImages, ctx=smartLoopContext){
         promptInput.innerHTML = oldHtml;
     }
 }
-async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=settings){
+async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=settings, lineage=null){
     const activeSettings = runSettings || settings;
     if(['modelscope','runninghub','volcengine'].includes(activeSettings.provider_id) || ['modelscope','runninghub','volcengine'].includes(activeSettings.engine)) throw new Error('ModelScope 服务已移除，请手动选择其他模型。');
     if(activeSettings.engine === 'comfy' && !StudioImageCapabilities.localEnabled()) throw new Error('本地模型未启用，请选择在线模型。');
-    if(activeSettings.engine === 'comfy') return generateComfyUrlsWithSettings(activeSettings, prompt, refs);
+    if(activeSettings.engine === 'comfy') return generateComfyUrlsWithSettings(activeSettings, prompt, refs, lineage);
     if(activeSettings.engine === 'runninghub' && runningHubSelectedModel(activeSettings)){
-        const taskResult = await runApiGeneration(prompt, refs, runningHubModelApiSettings(activeSettings));
+        const taskResult = await runApiGeneration(prompt, refs, runningHubModelApiSettings(activeSettings), lineage);
         const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
         if(taskIds.length){
             const settled = await Promise.all(taskIds.map(taskId => pollSmartCanvasTask(taskId)));
@@ -15477,7 +15522,7 @@ async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=se
         return {urls:await runApiVideoGeneration(prompt, refs, activeSettings), kind:'video'};
     }
     if(isApiLikeEngine(activeSettings.engine)){
-        const taskResult = await runApiGeneration(prompt, refs, activeSettings);
+        const taskResult = await runApiGeneration(prompt, refs, activeSettings, lineage);
         const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
         if(taskIds.length){
             const settled = await Promise.all(taskIds.map(taskId => pollSmartCanvasTask(taskId)));
@@ -15494,19 +15539,20 @@ async function generateUrlsForCurrentSettings(node, prompt, refs, runSettings=se
             : [];
     return {urls, kind:mediaKindForUrls(urls, 'image')};
 }
-async function generateComfyUrlsWithSettings(runSettings, prompt, refs){
+async function generateComfyUrlsWithSettings(runSettings, prompt, refs, lineage=null){
+    CanvasLineage.assertPrompt(prompt);
     const allRefs = refs || [];
     const imageRefs = imageRefsOnly(allRefs);
     const mode = runSettings.comfyMode || 'text';
     if(mode === 'text'){
-        const data = await runQueuedSmartComfyGenerate({prompt, width:Number(runSettings.width || 1024), height:Number(runSettings.height || 1024), workflow_json:'Z-Image.json', type:'zimage', client_id:smartClientId});
+        const data = await runQueuedSmartComfyGenerate({provenance:lineage, prompt, width:Number(runSettings.width || 1024), height:Number(runSettings.height || 1024), workflow_json:'Z-Image.json', type:'zimage', client_id:smartClientId});
         const urls = resultMediaUrls(data);
         return {urls, kind:mediaKindForUrls(urls, 'image')};
     }
     if(mode === 'enhance'){
         if(!imageRefs.length) throw new Error(tr('smart.errEnhanceNeedRefs'));
         const inputName = await comfyNameForRef(imageRefs[0]);
-        const data = await runQueuedSmartComfyGenerate({workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(runSettings.enhanceStrength ?? 0.5)}}, client_id:smartClientId});
+        const data = await runQueuedSmartComfyGenerate({provenance:lineage, workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(runSettings.enhanceStrength ?? 0.5)}}, client_id:smartClientId});
         const urls = resultMediaUrls(data);
         return {urls, kind:mediaKindForUrls(urls, 'image')};
     }
@@ -15514,7 +15560,7 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs){
         if(!imageRefs.length) throw new Error(tr('smart.errEditNeedRefs'));
         const names = [];
         for(const ref of imageRefs.slice(0, 3)) names.push(await comfyNameForRef(ref));
-        const data = await runQueuedSmartComfyGenerate({prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}, client_id:smartClientId});
+        const data = await runQueuedSmartComfyGenerate({provenance:lineage, prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}, client_id:smartClientId});
         const urls = resultMediaUrls(data);
         return {urls, kind:mediaKindForUrls(urls, 'image')};
     }
@@ -15544,7 +15590,7 @@ async function generateComfyUrlsWithSettings(runSettings, prompt, refs){
             values[field.id] = runSettings.comfyParams?.[field.id] ?? field.default;
         }
     });
-    const result = await runQueuedSmartComfyGenerate({prompt, workflow_json:workflowName, params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values), type:'workflow-custom', client_id:smartClientId});
+    const result = await runQueuedSmartComfyGenerate({provenance:lineage, prompt, workflow_json:workflowName, params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values), type:'workflow-custom', client_id:smartClientId});
     const urls = resultMediaUrls(result);
     const fallbackKind = result.videos?.length ? 'video' : result.audios?.length ? 'audio' : result.texts?.length ? 'text' : 'image';
     return {urls, kind:mediaKindForUrls(urls, fallbackKind)};
@@ -15567,19 +15613,29 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
         refsForRequest,
         ctx
     );
-    const prompt = (request.prompt || '').trim();
+    let prompt = (request.prompt || '').trim();
+    let lineage;
+    try {
+        CanvasLineage.assertPrompt(prompt);
+        settings=previousSettings;
+        lineage=await chooseSmartRunLineage(requestNode, request.refs || []);
+        settings=runSettings;
+        if(!lineage)throw Error('已取消本次运行');
+        prompt=CanvasLineage.compose(prompt,lineage);
+    } catch(error){settings=previousSettings;throw error;}
     const displayPrompt = (request.displayPrompt || '').trim();
     if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings)){
         settings = previousSettings;
         throw new Error('链路节点缺少提示词');
     }
     const meta = {
+        lineage,
         prompt,
         displayPrompt:request.displayPrompt || '',
-        promptRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? ''})).filter(ref => ref.url),
-        inputRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? '', kind:ref.kind || ''})).filter(ref => ref.url),
+        promptRefs:CanvasLineage.enrich(request.refs, nodes).filter(ref => ref.url),
+        inputRefs:CanvasLineage.enrich(request.refs, nodes).filter(ref => ref.url),
         sourceNodeId:sourceNode.id,
-        settings:JSON.parse(JSON.stringify(runSettings)),
+        settings:{...JSON.parse(JSON.stringify(runSettings)),size:sizeForRun(runSettings)},
         createdAt:Date.now()
     };
     if(requestNode.promptDraftHtml != null){
@@ -15609,14 +15665,14 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
     render();
     settings = previousSettings;
     try {
-        const result = await generateUrlsForCurrentSettings(outputNode, prompt, request.refs || [], runSettings);
+        const result = await generateUrlsForCurrentSettings(outputNode, prompt, request.refs || [], runSettings, lineage);
         if(!result.urls?.length) throw new Error(result.kind === 'video' ? tr('smart.errNoOutVideos') : tr('smart.errNoOutImages'));
         if(outpaintSize) delete requestNode.outpaintSize;
         addSmartGenerationLog({run:{...runLog, kind:result.kind || logKind}, outputs:result.urls, runMs:nowMs() - runLogStart});
         const ext = result.kind === 'video' ? 'mp4' : result.kind === 'audio' ? 'mp3' : result.kind === 'text' ? 'txt' : 'png';
         const additions = result.urls.map((item, i) => {
             const url = typeof item === 'string' ? item : item?.url || '';
-            return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true, provenance:imageRunProvenance({prompt,settings:runSettings,inputRefs:request.refs || [],createdAt:Date.now()},url)}));
+            return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true, provenance:imageRunProvenance(meta,url)}));
         }).filter(item => item.url);
         if(ctx?.appendLoopOutputs) {
             appendLoopOutputsToNode(outputNode, additions, result.kind, ctx);
@@ -15662,16 +15718,23 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
     try {
         const refsForRequest = outputImagesForNode(loopNode, true, ctx).filter(img => img?.url);
         const request = buildPromptRequestForNode(rootNode, refsForRequest.length ? refsForRequest : null, ctx);
-        const prompt = (request.prompt || '').trim();
+        let prompt = (request.prompt || '').trim();
+        CanvasLineage.assertPrompt(prompt);
+        settings=previousSettings;
+        const lineage=await chooseSmartRunLineage(rootNode,request.refs || []);
+        settings=runSettings;
+        if(!lineage)throw Error('已取消本次运行');
+        prompt=CanvasLineage.compose(prompt,lineage);
         const displayPrompt = (request.displayPrompt || '').trim();
         if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings)) throw new Error('链路节点缺少提示词');
         const meta = {
+            lineage,
             prompt,
             displayPrompt:request.displayPrompt || '',
-            promptRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? ''})).filter(ref => ref.url),
-            inputRefs:(request.refs || []).map(ref => ({url:ref.url || '', name:ref.name || '', nodeId:ref.nodeId || '', imageIndex:ref.imageIndex ?? '', kind:ref.kind || ''})).filter(ref => ref.url),
+            promptRefs:CanvasLineage.enrich(request.refs, nodes).filter(ref => ref.url),
+            inputRefs:CanvasLineage.enrich(request.refs, nodes).filter(ref => ref.url),
             sourceNodeId:rootNode.id,
-            settings:JSON.parse(JSON.stringify(runSettings)),
+            settings:{...JSON.parse(JSON.stringify(runSettings)),size:sizeForRun(runSettings)},
             createdAt:Date.now()
         };
         const logKind = isApiLikeEngine(runSettings.engine) && runSettings.apiKind === 'video' ? 'video' : 'image';
@@ -15696,7 +15759,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
         settings = previousSettings;
         let result;
         if(isApiLikeEngine(runSettings.engine) && runSettings.apiKind !== 'video'){
-            const taskResult = await runApiGeneration(prompt, request.refs || [], runSettings);
+            const taskResult = await runApiGeneration(prompt, request.refs || [], runSettings, lineage);
             const taskIds = Array.isArray(taskResult?.taskIds) ? taskResult.taskIds : [];
             if(!taskIds.length) throw new Error(tr('smart.errRunFailed'));
             const existing = cleanHistoryImages(outputSlot.images || []);
@@ -15710,6 +15773,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
                 delete history.h;
                 outputSlot.images = [];
             }
+            attachRunMeta(outputSlot, meta);
             outputSlot.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image', providerId:taskResult.providerId, model:taskResult.model}));
             outputSlot.pending = Math.max(taskIds.length, Number(outputSlot.pending || 0) || taskIds.length);
             outputSlot.running = false;
@@ -15723,7 +15787,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
             }
             result = {urls:(outputSlot.images || []).map(img => img?.url ? img : null).filter(Boolean), kind:'image'};
         } else {
-            result = await generateUrlsForCurrentSettings(outputSlot, prompt, request.refs || [], runSettings);
+            result = await generateUrlsForCurrentSettings(outputSlot, prompt, request.refs || [], runSettings, lineage);
         }
         if(!result.urls?.length) throw new Error(result.kind === 'video' ? tr('smart.errNoOutVideos') : tr('smart.errNoOutImages'));
         let additions;
@@ -16020,7 +16084,7 @@ async function runSmartCascade(targetNode=null){
         selectedImage = {nodeId:'', index:-1};
         activeComposerSubject = null;
         lastComposerNodeId = '';
-        composer.classList.remove('open');
+        setComposerOpen(false);
         settings = originalSettings;
         promptInput.innerHTML = originalPromptHtml;
         scheduleSave();
@@ -16058,10 +16122,17 @@ async function runGeneration(){
     const node = selectedNode();
     if(node?.type === 'smart-minimax') return runMinimaxNode(node.id);
     const request = buildPromptRequest(node, null, true, smartLoopContext);
-    const prompt = request.prompt.trim();
+    let prompt = request.prompt.trim();
     if(!node) return;
-    if(smartNodeInFlight(node)) return;
-    const refs = request.refs;
+    if(smartNodeInFlight(node) || node._choosingLineage) return;
+    try { CanvasLineage.assertPrompt(prompt); } catch(error){toast(error.message);return;}
+    if(!prompt && smartRunNeedsPrompt(smartSettingsForNode(node) || settings)){toast(tr('smart.toastNeedPrompt'));return;}
+    const refs = CanvasLineage.enrich(request.refs, nodes);
+    node._choosingLineage=true;
+    let lineage;
+    try { lineage=await chooseSmartRunLineage(node,refs); } catch(error){toast(error.message || '读取创作来源失败');return;} finally { delete node._choosingLineage; }
+    if(!lineage)return;
+    prompt=CanvasLineage.compose(prompt,lineage);
     const previousSettings = cloneSmartSettings(settings);
     const runSettings = smartSettingsForNode(node);
     if (['modelscope','runninghub','volcengine'].includes(runSettings?.engine) || ['modelscope','runninghub','volcengine'].includes(runSettings?.provider_id)) { toast('服务已移除，请选择其他模型。'); return; }
@@ -16085,6 +16156,8 @@ async function runGeneration(){
         };
     }
     const meta = snapshotRunMeta(prompt, node.id, request.displayPrompt, refs);
+    meta.lineage=lineage;
+    meta.settings.size=sizeForRun(settings);
     const logKind = isApiLikeEngine(settings.engine) && settings.apiKind === 'video' ? 'video' : 'image';
     const runLog = smartRunSnapshot(node, prompt, refs, logKind);
     rememberRecentSmartSettings(settings, node);
@@ -16156,12 +16229,12 @@ async function runGeneration(){
         }
         const rhModelMode = settings.engine === 'runninghub' && Boolean(runningHubSelectedModel(settings));
         const outImages = rhModelMode
-            ? await runApiGeneration(prompt, refs, runningHubModelApiSettings(settings))
+            ? await runApiGeneration(prompt, refs, runningHubModelApiSettings(settings), lineage)
             : settings.engine === 'runninghub'
                 ? await runRunningHubGeneration(prompt, refs)
                 : settings.engine === 'modelscope'
                 ? await runModelscopeGeneration(prompt, refs)
-                : await runApiGeneration(prompt, refs);
+                : await runApiGeneration(prompt, refs, settings, lineage);
         if(isApiLikeEngine(settings.engine) || rhModelMode){
             const taskIds = Array.isArray(outImages?.taskIds) ? outImages.taskIds : [];
             if(!taskIds.length) throw new Error(tr('smart.errRunFailed'));
@@ -16282,10 +16355,12 @@ function comfyFieldKind(field){
     if(field?.type === 'textarea' || /prompt|text|提示词|正向|负向/.test(key)) return 'prompt';
     return 'setting';
 }
-async function runApiGeneration(prompt, refs, runSettings=settings){
+async function runApiGeneration(prompt, refs, runSettings=settings, lineage=null){
+    CanvasLineage.assertPrompt(prompt);
     if(!runSettings.provider_id || !runSettings.model) throw new Error(tr('smart.errNoApiModel'));
     const count = Math.max(1, Math.min(8, Number(runSettings.count || 1)));
     const payload = {
+        provenance:lineage,
         prompt,
         provider_id:runSettings.provider_id,
         model:runSettings.model,
@@ -16492,14 +16567,14 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta){
             values[field.id] = settings.comfyParams?.[field.id] ?? field.default;
         }
     });
-    const result = await runQueuedSmartComfyGenerate({prompt, workflow_json:workflowName, params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values), type:'workflow-custom', client_id:smartClientId});
+    const result = await runQueuedSmartComfyGenerate({provenance:meta?.lineage || null, prompt, workflow_json:workflowName, params:comfyParamsFromWorkflowValues(wf.config || {fields:[]}, values), type:'workflow-custom', client_id:smartClientId});
     const urls = resultMediaUrls(result);
     if(!urls.length) throw new Error(tr('smart.errComfyNoImages'));
     const kind = mediaKindForUrls(urls, result.videos?.length ? 'video' : result.audios?.length ? 'audio' : result.texts?.length ? 'text' : 'image');
     const ext = kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png';
-    const out = urls.map((url, i) => ({url, name:`comfy-${i + 1}.${ext}`, kind})).filter(x => x.url);
+    const out = urls.map((item, i) => typeof item === 'object' ? item : ({url:item, name:`comfy-${i + 1}.${ext}`, kind})).filter(x => x.url);
     if(!out.length) throw new Error(tr('smart.errComfyEmpty'));
-    const outputUrls = out.map(o => o.url);
+    const outputUrls = out;
     if(pendingNode){
         finalizePendingNode(pendingNode, outputUrls, meta, kind);
     } else {
@@ -16511,13 +16586,13 @@ async function runComfyGeneration(node, prompt, refs, pendingNode, meta){
     scheduleSave();
 }
 async function runComfyText(node, prompt, pendingNode, meta){
-    const data = await runQueuedSmartComfyGenerate({prompt, width:Number(settings.width || 1024), height:Number(settings.height || 1024), workflow_json:'Z-Image.json', type:'zimage', client_id:smartClientId});
-    const out = data.outputs || data.images || [];
+    const data = await runQueuedSmartComfyGenerate({provenance:meta?.lineage || null, prompt, width:Number(settings.width || 1024), height:Number(settings.height || 1024), workflow_json:'Z-Image.json', type:'zimage', client_id:smartClientId});
+    const out = data.image_items?.length ? data.image_items : (data.outputs || data.images || []);
     if(!out.length) throw new Error(tr('smart.errComfyNoImages'));
     if(pendingNode){
         finalizePendingNode(pendingNode, out, meta);
     } else {
-        const created = createNode((node.x || 0) + nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`comfy-${i + 1}.png`})));
+        const created = createNode((node.x || 0) + nodeRect(node).width + 40, node.y || 0, out.map((item, i) => typeof item === 'object' ? item : ({url:item, name:`comfy-${i + 1}.png`})));
         attachRunMeta(created, meta);
         addConnection(node.id, created.id);
     }
@@ -16527,13 +16602,13 @@ async function runComfyText(node, prompt, pendingNode, meta){
 async function runComfyEnhance(node, refs, pendingNode, meta){
     if(!refs.length) throw new Error(tr('smart.errEnhanceNeedRefs'));
     const inputName = await comfyNameForRef(refs[0]);
-    const data = await runQueuedSmartComfyGenerate({workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(settings.enhanceStrength ?? 0.5)}}, client_id:smartClientId});
-    const out = data.outputs || data.images || [];
+    const data = await runQueuedSmartComfyGenerate({provenance:meta?.lineage || null, workflow_json:'Z-Image-Enhance.json', type:'enhance', params:{"15":{image:inputName},"204":{value:Number(settings.enhanceStrength ?? 0.5)}}, client_id:smartClientId});
+    const out = data.image_items?.length ? data.image_items : (data.outputs || data.images || []);
     if(!out.length) throw new Error(tr('smart.errComfyNoImages'));
     if(pendingNode){
         finalizePendingNode(pendingNode, out, meta);
     } else {
-        const created = createNode((node.x || 0) + nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`enhance-${i + 1}.png`})));
+        const created = createNode((node.x || 0) + nodeRect(node).width + 40, node.y || 0, out.map((item, i) => typeof item === 'object' ? item : ({url:item, name:`enhance-${i + 1}.png`})));
         attachRunMeta(created, meta);
         addConnection(node.id, created.id);
     }
@@ -16543,13 +16618,13 @@ async function runComfyEdit(node, prompt, refs, pendingNode, meta){
     if(!refs.length) throw new Error(tr('smart.errEditNeedRefs'));
     const names = [];
     for(const ref of refs.slice(0, 3)) names.push(await comfyNameForRef(ref));
-    const data = await runQueuedSmartComfyGenerate({prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}, client_id:smartClientId});
-    const out = data.outputs || data.images || [];
+    const data = await runQueuedSmartComfyGenerate({provenance:meta?.lineage || null, prompt, workflow_json:'Flux2-Klein.json', type:'klein', params:{"168":{text:prompt},"158":{noise_seed:Math.floor(Math.random()*1000000)},"278":{image:names[0] || ""},"270":{image:names[1] || ""},"292":{image:names[2] || ""},"313":{value:Boolean(names[1])},"314":{value:Boolean(names[2])}}, client_id:smartClientId});
+    const out = data.image_items?.length ? data.image_items : (data.outputs || data.images || []);
     if(!out.length) throw new Error(tr('smart.errComfyNoImages'));
     if(pendingNode){
         finalizePendingNode(pendingNode, out, meta);
     } else {
-        const created = createNode((node.x || 0) + nodeRect(node).width + 40, node.y || 0, out.map((url, i) => ({url, name:`edit-${i + 1}.png`})));
+        const created = createNode((node.x || 0) + nodeRect(node).width + 40, node.y || 0, out.map((item, i) => typeof item === 'object' ? item : ({url:item, name:`edit-${i + 1}.png`})));
         attachRunMeta(created, meta);
         addConnection(node.id, created.id);
     }
@@ -17104,7 +17179,7 @@ function finalizeSmartPendingTask(node, taskId, images, kind='image'){
     const additions = cleanHistoryImages((mediaItems || []).map((item, i) => {
         const url = typeof item === 'string' ? item : item?.url || '';
         const itemKind = (typeof item === 'object' && item.kind) || kind;
-        return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true}));
+        return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true, provenance:item?.provenance || imageRunProvenance({prompt:node.runModelPrompt || node.runPrompt || '',settings:node.runSettings || {},lineage:node.runLineage,inputRefs:node.runInputRefs || [],createdAt:node.runAt || Date.now()},url)}));
     }).filter(item => item.url)).filter(item => {
         const key = `${item.kind || ''}|${item.url || ''}`;
         if(seen.has(key)) return false;
@@ -17912,7 +17987,7 @@ window.onmouseup = e => {
         const droppedOnAssetPanel = assetLibraryOpen && hit && assetPanel?.contains(hit);
         if(droppedOnAssetPanel && draggedNode && (draggedNode.images || []).length){
             const imagesToSave = (draggedNode.images || []).filter(img => img?.url);
-            imagesToSave.forEach(img => addUrlToAssetLibrary(img.url, img.name || draggedNode.title || 'image'));
+            imagesToSave.forEach(img => addUrlToAssetLibrary(img.url, img.name || draggedNode.title || 'image', img.provenance || draggedNode.provenance || null));
             (dragState.group || [{id:dragState.id, ox:dragState.ox, oy:dragState.oy}]).forEach(item => {
                 const n = nodes.find(x => x.id === item.id);
                 if(n){ n.x = item.ox; n.y = item.oy; }
@@ -18380,6 +18455,10 @@ if(promptTemplateLibrarySelect) promptTemplateLibrarySelect.onchange = async () 
     renderPromptLibrarySelect();
     renderPromptTemplatePanel({preserveScroll:false});
 };
+document.getElementById('composerReferenceBtn')?.addEventListener('click', addCreationReference);
+document.getElementById('smartStartReferenceBtn')?.addEventListener('click', addCreationReference);
+const smartEmptyState=document.getElementById('smartEmptyState');
+['pointerdown','mousedown','click','dblclick','wheel'].forEach(type=>smartEmptyState?.addEventListener(type,event=>event.stopPropagation()));
 if(composerTemplateBtn) composerTemplateBtn.onclick = event => {
     event.preventDefault();
     event.stopPropagation();
@@ -18541,7 +18620,7 @@ async function handleAssetPanelDrop(e){
     if(raw){
         try {
             const payload = JSON.parse(raw);
-            if(payload?.url) await addUrlToAssetLibrary(payload.url, payload.name || '');
+            if(payload?.url) await addUrlToAssetLibrary(payload.url, payload.name || '', payload.provenance || null);
             return;
         } catch(e) {
             toast(tr('smart.assetAddFail'));

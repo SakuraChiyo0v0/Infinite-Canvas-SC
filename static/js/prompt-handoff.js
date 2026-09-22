@@ -3,6 +3,8 @@
 const target=location.pathname.endsWith('/klein.html')?'klein':'zimage';
 let consuming=false;
 async function consume(){
+ // 新页面统一由 CreationFlow 接收，保留非空草稿确认与可重试交接。
+ if(window.CreationFlow)return;
  if(consuming)return;
  let data;try{data=JSON.parse(sessionStorage.getItem('studio_prompt_handoff')||'null');}catch(_){return;}
  if(!data||data.target!==target)return;

@@ -67,9 +67,13 @@
         if(!option) throw new Error('请选择可用的图像模型');
         const references=core.referencesFor(draft);
         if(references.length>3)throw new Error('角色设定图和附加参考图合计最多 3 张，请减少附加图片');
-        return {prompt,provider_id:option.provider,model:option.model,size:draft.size,n:1,
+        const body={prompt,provider_id:option.provider,model:option.model,size:draft.size,n:1,
             reference_images:references.map(r => ({url:r.url,name:r.name,kind:'image'})),
             operation:references.length ? 'edit' : 'generate',history_type:references.length ? 'klein' : 'online'};
+        body.provenance=core.provenance({prompt,provider:option.provider,model:option.model,size:draft.size,n:1,
+            operation:body.operation,references:body.reference_images,character:draft.character || null,
+            source:draft.source || null,parentResultId:draft.parentResultId || '',createdAt:Date.now()});
+        return body;
     }
     function getDraft(item, library, content){
         const key = item.workbench_key || JSON.stringify([library.id,item.id]);
@@ -130,7 +134,7 @@
     }
     function resultsMarkup(d){
         return d.results.map((r,i) => `<figure class="pw-result"><a href="${escape(r.url)}" target="_blank" rel="noopener"><img src="${escape(r.url)}" alt="${escape(d.item.name)} 的生成结果"></a>
-            <div class="pw-row"><a class="asset-btn" href="${escape(r.url)}" download="prompt-result.png">下载</a><button type="button" class="asset-btn" data-pw-reuse="${i}">用这张继续改</button><button type="button" class="asset-btn" data-pw-canvas="${i}" ${r.sending?'disabled':''}>${r.canvasReady?'打开画布':r.sending?'正在送入…':'送到新画布'}</button></div>
+            <div class="pw-row"><a class="asset-btn" href="${escape(r.url)}" download="prompt-result.png">下载</a><button type="button" class="asset-btn" data-pw-reuse="${i}">用这张继续改</button><button type="button" class="asset-btn" data-pw-editor="${i}">去图片编辑</button><button type="button" class="asset-btn" data-pw-asset="${i}">保存到素材库</button><button type="button" class="asset-btn" data-pw-canvas="${i}" ${r.sending?'disabled':''}>${r.sending?'正在送入…':'加入画布'}</button></div>
             <figcaption>${r.character?escape(r.character.name)+' · ':''}${escape(r.model)} · ${r.operation === 'edit' ? '图片编辑' : '文生图'} · ${escape(r.size)}${r.parentResultId?' · 修改分支':''}</figcaption>
             <label>一句话修改<input data-pw-revision="${i}" value="${escape(d.revisionInputs?.[r.id] || '')}" placeholder="例如：围巾换成蓝色，其他保持不变"></label>
             <div class="pw-row"><button class="asset-btn primary" type="button" data-pw-revise="${i}" ${d.busy?'disabled':''}>按这句话改图</button><button class="asset-btn" type="button" data-pw-cover="${i}">设为模板效果图</button></div>
@@ -144,9 +148,9 @@
         const items=Object.entries(state.drafts).flatMap(([key,record])=>{
             let parts;try{parts=JSON.parse(key);}catch(_){return [];}
             if(parts[0]!=='workbench_branches' || !record.value)return [];
-            return [{id:parts[1],name:record.value.branchName || '画布创作分支',positive:record.value.original || record.value.text,category:'branches',scene:'改图；来自画布的独立创作分支，不覆盖原画布。'}];
+            return [{id:parts[1],name:record.value.branchName || '继续创作分支',positive:record.value.original || record.value.text,category:'branches',scene:'改图；基于所选图片继续创作，保留原始内容。'}];
         });
-        return {id:'workbench_branches',name:'画布分支',readonly:true,categories:[{id:'branches',name:'继续创作'}],items};
+        return {id:'workbench_branches',name:'继续创作',readonly:true,categories:[{id:'branches',name:'继续创作'}],items};
     }
     function recipesMarkup(d){
         const recipes=Object.entries(state.recipes).filter(([,r])=>r.value?.key===d.key);
@@ -166,6 +170,11 @@
         if(!d.model && d.options.length) d.model = JSON.stringify([d.options[0].provider,d.options[0].model]);
         const selected = d.options.some(o => JSON.stringify([o.provider,o.model]) === d.model);
         return `<div class="panel-head"><div class="panel-title"><strong>创作台</strong><span>临时修改不会覆盖模板</span></div><div class="panel-actions"><button class="asset-btn" type="button" data-prompt-edit-start="${escape(item.id)}" ${item.character_context?'hidden':''} ${library.readonly || item.character_context ? 'disabled' : ''}>管理模板</button></div></div>
+        <div class="pw-primary-actions" data-pw-key="${escape(d.key)}">
+            <button type="button" id="pwGenerate" class="asset-btn primary pw-generate" data-pw-generate ${d.busy || d.pending || d.uploading || !selected?'disabled':''}>${d.busy?'正在生成…':'生成一张'}</button>
+            ${!selected?`<div class="pw-model-empty"><span>${d.options.length?'原模型不可用，请重新选择模型。':'还没有可用图像模型。'}</span><button class="asset-btn" type="button" data-pw-configure>配置图像模型</button><button class="asset-btn" type="button" data-pw-reload-models>重新加载</button></div>`:''}
+            <div id="pwStatus" class="pw-status" role="status" aria-live="polite" data-error="${d.error}">${escape(d.status)}</div>
+        </div>
         <div class="pw-scroll" data-pw-key="${escape(d.key)}">
             <h2>${escape(item.name || '提示词')}</h2>
             <p id="pwSaveStatus" class="pw-note" role="status">${escape(d.saveStatus)}</p>
@@ -179,12 +188,10 @@
             </details>
             <div id="pwVariableSection" ${variables(d.text).length?'':'hidden'}><div class="pw-row"><strong>填写模板变量</strong><button type="button" class="asset-btn" data-pw-none>其余空项填 none</button></div><div id="pwVariables" class="pw-variables">${variableFields(d)}</div></div>
             <details><summary>查看最终发送的提示词</summary><div id="pwPreview" class="pw-preview">${escape(finalPrompt(d))}</div></details>
-            <div class="pw-drop" id="pwDrop"><div class="pw-row"><label class="asset-btn">添加参考图<input id="pwUpload" type="file" accept="image/*" multiple hidden></label><span class="pw-note">可拖入图片，最多 3 张</span></div><div id="pwReferences" class="pw-reference-list">${referenceMarkup(d)}</div></div>
+            <div class="pw-drop" id="pwDrop"><div class="pw-row"><button type="button" class="asset-btn" data-pw-pick-reference>从角色 / 素材选择</button><label class="asset-btn">添加参考图<input id="pwUpload" type="file" accept="image/*" multiple hidden></label><span class="pw-note">可拖入图片，最多 3 张</span></div><div id="pwReferences" class="pw-reference-list">${referenceMarkup(d)}</div></div>
             <label>图像模型<select id="pwModel">${!selected ? '<option value="">请选择可用模型</option>' : ''}${d.options.map(o => {const value=JSON.stringify([o.provider,o.model]);return `<option value="${escape(value)}" ${value===d.model?'selected':''}>${escape(o.label)}</option>`;}).join('')}</select></label>
             <div class="pw-row"><label>输出画幅<select id="pwSize">${[['1024x1024','方形 · 1:1'],['1024x1536','竖图 · 2:3'],['1536x1024','横图 · 3:2'],['768x1024','竖图 · 3:4'],['1024x768','横图 · 4:3'],['576x1024','竖屏 · 9:16'],['1024x576','宽屏 · 16:9']].map(([v,label])=>`<option value="${v}" ${d.size===v?'selected':''}>${label}</option>`).join('')}</select></label><span id="pwOperation" class="pw-note">${core.referencesFor(d).length?'图片编辑 · 使用参考图':'文生图 · 无参考图'}</span></div>
             <p class="pw-note">ChatGPT 网页版按画幅要求生成，实际像素尺寸以结果为准。</p>
-            <button type="button" id="pwGenerate" class="asset-btn primary pw-generate" data-pw-generate ${d.busy || d.pending || d.uploading || !selected?'disabled':''}>${d.busy?'正在生成…':'生成一张'}</button>
-            <div id="pwStatus" class="pw-status" role="status" aria-live="polite" data-error="${d.error}">${escape(d.status)}</div>
             ${d.pending?`${d.pending.taskId?'<button class="asset-btn" type="button" data-pw-resume>重新检查上次任务</button>':''}<button class="asset-btn" type="button" data-pw-dismiss ${d.busy?'disabled':''}>已核对生图历史，结束状态跟踪</button><p class="pw-note">结束跟踪不会取消上游任务，也不会重新提交。</p>`:''}
             <details><summary>模板效果预览 · ${escape(core.mode(item))}</summary>${card(item,library)}<label class="asset-btn">上传效果图<input id="pwCoverUpload" type="file" accept="image/*" hidden></label><p class="pw-note">请使用这条模板的实际效果图；也可以将生成结果设为封面。</p></details>
             <div id="pwResults" class="pw-results">${resultsMarkup(d)}</div>
@@ -218,6 +225,8 @@
                 if(!d.options.some(o=>o.provider===r.provider && o.model===r.model))throw new Error('原结果模型不可用，请用“用这张继续改”重新选择模型');
                 body={prompt:core.revisionPrompt(r.prompt,revision.instruction),provider_id:r.provider,model:r.model,size:r.size,n:1,operation:'edit',history_type:'klein',reference_images:[{url:r.url,name:'上一轮结果',kind:'image'}]};
             }else body=requestBody(d);
+            if(!body.provenance)body.provenance=core.provenance({...revision.result,prompt:body.prompt,
+                references:body.reference_images,parentResultId:revision.result.id,operation:body.operation,createdAt:Date.now()});
         } catch(error){ d.status=error.message;d.error=true;update(d);return; }
         d.pending={request:core.clone(body),character:core.clone(revision?revision.result.character || null:d.character || null),source:core.clone(revision?.result.source || d.source),parentResultId:revision?.result.id || d.parentResultId || '',instruction:revision?.instruction || '',createdAt:Date.now()};
         d.busy=true;d.error=false;d.status='正在生成，可切换模板；结果会保留在这条提示词下。';update(d);
@@ -241,8 +250,14 @@
                     if(!images?.length){d.pending=null;throw new Error('服务没有返回图片');}
                     const body=pending.request;
                     images.forEach((url,index)=>{
-                        const id=pending.taskId+':'+index;
-                        if(!d.results.some(r=>r.id===id))d.results.unshift({id,url,prompt:body.prompt,provider:body.provider_id,model:body.model,size:body.size,operation:body.operation,references:core.clone(body.reference_images),character:core.clone(pending.character || null),source:pending.source,parentResultId:pending.parentResultId,instruction:pending.instruction,createdAt:pending.createdAt});
+                        const serverMeta=task.result?.image_items?.[index]?.provenance || task.result?.provenance || null;
+                        const id=task.result?.image_items?.[index]?.provenance?.resultId || pending.taskId+':'+index;
+                        const result={id,url,prompt:body.prompt,provider:body.provider_id,model:body.model,size:body.size,
+                            operation:body.operation,references:core.clone(body.reference_images || []),character:core.clone(pending.character || null),
+                            source:pending.source,parentResultId:pending.parentResultId,instruction:pending.instruction,
+                            createdAt:pending.createdAt,quality:body.quality,n:body.n,...core.clone(serverMeta || {})};
+                        result.id=id;result.url=url;result.provenance=core.clone(serverMeta || core.provenance(result));
+                        if(!d.results.some(r=>r.id===id))d.results.unshift(result);
                     });
                     d.pending=null;d.status='生成完成，图片与来源已保存。';d.error=false;
                     if(!state.covers[d.key]?.value){try{await setCover(d,d.results[0].url,false);}catch(error){d.status+=' 效果图保存失败：'+error.message;}}
@@ -267,7 +282,7 @@
             if(asCover)await setCover(d,uploaded[0].url);
             else{d.references.push(...uploaded.map(f=>({url:f.url,name:f.name || '参考图'})));d.status='参考图已添加，生成时会使用图片编辑。';}
         } catch(error){d.error=true;d.status=error.message;}
-        finally {d.uploading=false;changed(d);update(d);}
+        finally {d.uploading=false;changed(d);paint(d);}
     }
     async function setCover(d,url,announce=true){
         if(!core.safeUrl(url))throw new Error('无效的效果图地址');
@@ -310,26 +325,40 @@
         } catch(error){d.error=true;d.status=error.message;}
         finally {d.saving=false;changed(d);update(d);}
     }
-    async function sendToCanvas(d,r){
-        if(r.sending) return;
-        r.sending=true;d.error=false;update(d);
+    async function resultAction(d,r,action){
+        if(!r || r.sending)return;
+        r.sending=true;
         try {
-            if(!r.canvasReady){
-                if(!r.canvas) r.canvas=(await json('/api/canvases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:d.item.name,kind:'smart',icon:'sparkles'})})).canvas;
-                const preview=[...(document.querySelectorAll?.('#pwResults img') || [])].find(image=>image.getAttribute('src')===r.url);
-                const [fallbackWidth,fallbackHeight]=r.size.split('x').map(Number);
-                const width=preview?.naturalWidth || fallbackWidth || 1024;
-                const height=preview?.naturalHeight || fallbackHeight || 1024;
-                const fit=400/Math.max(width,height);
-                const graph=core.canvasGraph(r,{width,height});
-                await json(`/api/canvases/${encodeURIComponent(r.canvas.id)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:r.canvas.title,icon:'sparkles',...graph,viewport:{x:0,y:0,scale:1},base_updated_at:r.canvas.updated_at})});
-                r.canvasReady=true;
-            }
-            d.status='图片与本次提示词已放入新画布。';
-            if(global.parent!==global) global.parent.postMessage({type:'prompt-workbench-open-canvas',id:r.canvas.id},location.origin);
-            else global.open(`/static/smart-canvas.html?id=${encodeURIComponent(r.canvas.id)}`,'_blank','noopener');
-        } catch(error){d.status=error.message;d.error=true;}
-        finally {r.sending=false;changed(d);update(d);}
+            if(!global.CreationFlow)throw Error('创作入口尚未加载，请刷新页面');
+            const result={...core.clone(r),provenance:core.provenance(r)};
+            if(action==='canvas')await global.CreationFlow.toCanvas(result);
+            else if(action==='asset')await global.CreationFlow.saveAsset(result);
+            else await global.CreationFlow.toEditor({...result,parentResultId:r.id,references:[{url:r.url,name:'上一轮结果',kind:'image'}]});
+        }catch(error){d.status=error.message;d.error=true;update(d);}
+        finally {r.sending=false;}
+    }
+    async function pickReference(d){
+        if(d.busy || d.uploading)return;
+        try {
+            const picked=await global.CreationFlow.pickReference();
+            if(!picked)return;
+            const character=picked.character || picked.provenance?.character || null;
+            if(character && d.character && character.id!==d.character.id &&
+                !await global.CreationFlow.confirmReplace('这份资料属于另一个角色，是否替换当前角色？已有附加参考图会保留。'))return;
+            const references=[...(d.references || []),...(picked.character?[]:picked.references || [])];
+            const useCharacterReferences=picked.character?true:character && !d.character?false:d.useCharacterReferences;
+            const candidate={...d,character:character || d.character,references,useCharacterReferences};
+            if(core.referencesFor(candidate).length>3)throw Error('角色设定图和附加参考图合计最多 3 张，请先移除多余图片');
+            d.character=candidate.character;d.useCharacterReferences=useCharacterReferences;
+            d.references=references.filter((r,i)=>references.findIndex(other=>other.url===r.url)===i);
+            if(picked.provenance){d.parentResultId=picked.provenance.resultId || d.parentResultId;d.source=core.clone(picked.provenance.source || d.source);}
+            if(character)for(const name of variables(d.text))if(['CHARACTER_NAME','CHARACTER','角色','角色名称'].includes(name.toUpperCase()))d.values[name]=character.name;
+            d.status='参考资料已加入，确认任务后再生成。';d.error=false;changed(d);paint(d);
+        }catch(error){d.status=error.message;d.error=true;update(d);}
+    }
+    async function reloadModels(d){
+        try {const data=await json('/api/providers');d.providers=data.providers || [];global.dispatchEvent(new CustomEvent('prompt-workbench-providers',{detail:d.providers}));d.status='模型列表已更新';d.error=false;paint(d);}
+        catch(error){d.status='模型加载失败：'+error.message;d.error=true;update(d);}
     }
     if(typeof document !== 'undefined'){
         document.addEventListener('input',event=>{
@@ -347,7 +376,7 @@
         });
         document.addEventListener('change',event=>{
             const d=current;if(!d || !event.target.closest('[data-pw-key]'))return;
-            if(event.target.id==='pwModel'){d.model=event.target.value;try{localStorage.setItem('studio_image_model',d.model);}catch(_){}update(d);}
+            if(event.target.id==='pwModel'){d.model=event.target.value;try{localStorage.setItem('studio_image_model',d.model);}catch(_){}paint(d);}
             if(event.target.id==='pwSize')d.size=event.target.value;
             if(event.target.id==='pwUpload'){upload(d,event.target.files);event.target.value='';}
             if(event.target.id==='pwCoverUpload'){upload(d,event.target.files,true);event.target.value='';}
@@ -358,6 +387,9 @@
         document.addEventListener('click',event=>{
             const d=current;const target=event.target;if(!d || !target.closest('[data-pw-key]'))return;
             if(target.closest('[data-pw-generate]'))generate(d);
+            if(target.closest('[data-pw-configure]'))global.CreationFlow?.configureModels();
+            if(target.closest('[data-pw-reload-models]'))reloadModels(d);
+            if(target.closest('[data-pw-pick-reference]'))pickReference(d);
             if(target.closest('[data-pw-character-refresh]'))loadCharacters().then(()=>paint(d)).catch(error=>{d.status=error.message;d.error=true;update(d);});
             if(target.closest('[data-pw-character-latest]'))loadCharacters().then(()=>{const character=characters.find(c=>c.id===d.character?.id);if(!character)throw Error('该角色已归档，仍可使用当前保存的资料');chooseCharacter(d,character);}).catch(error=>{d.status=error.message;d.error=true;update(d);});
             if(target.closest('[data-pw-save]'))save(d);
@@ -381,9 +413,11 @@
                 document.getElementById('pwPreview').textContent=finalPrompt(d);
                 changed(d);
             }
-            const remove=target.closest('[data-pw-remove]');if(remove){d.references.splice(Number(remove.dataset.pwRemove),1);changed(d);update(d);}
+            const remove=target.closest('[data-pw-remove]');if(remove){d.references.splice(Number(remove.dataset.pwRemove),1);changed(d);paint(d);}
             const reuse=target.closest('[data-pw-reuse]');if(reuse)continueResult(d.results[Number(reuse.dataset.pwReuse)]);
-            const canvas=target.closest('[data-pw-canvas]');if(canvas)sendToCanvas(d,d.results[Number(canvas.dataset.pwCanvas)]);
+            const canvas=target.closest('[data-pw-canvas]');if(canvas)resultAction(d,d.results[Number(canvas.dataset.pwCanvas)],'canvas');
+            const asset=target.closest('[data-pw-asset]');if(asset)resultAction(d,d.results[Number(asset.dataset.pwAsset)],'asset');
+            const editor=target.closest('[data-pw-editor]');if(editor)resultAction(d,d.results[Number(editor.dataset.pwEditor)],'editor');
         });
         document.addEventListener('dragover',event=>{if(event.target.closest('#pwDrop')){event.preventDefault();event.target.closest('#pwDrop').classList.add('drag-over');}});
         document.addEventListener('dragleave',event=>event.target.closest('#pwDrop')?.classList.remove('drag-over'));

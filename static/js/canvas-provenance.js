@@ -4,7 +4,7 @@
     function metadata(node,image){
         if(image?.provenance)return core.clone(image.provenance);
         if(node?.provenance)return core.clone(node.provenance);
-        return {prompt:node?.runModelPrompt || node?.runPrompt || '',model:node?.runSettings?.model || node?.runSettings?.apiModel || '',provider:node?.runSettings?.provider_id || '',size:node?.runSettings?.size || '1024x1024',references:core.clone(node?.runInputRefs || []),createdAt:node?.runAt || 0,source:null};
+        return {...(node?.runLineage || {}),prompt:node?.runModelPrompt || node?.runPrompt || '',model:node?.runSettings?.model || node?.runSettings?.apiModel || '',provider:node?.runSettings?.provider_id || '',size:node?.runSettings?.size || '1024x1024',references:core.clone(node?.runInputRefs || []),createdAt:node?.runAt || 0,source:node?.runLineage?.source || null};
     }
     async function branch(meta,image,canvasTitle){
         const id=crypto.randomUUID();
@@ -18,9 +18,17 @@
     function show(node,image,canvasTitle){
         const meta=metadata(node,image);
         const dialog=document.createElement('dialog');dialog.className='canvas-provenance';
-        dialog.innerHTML=`<form method="dialog"><button aria-label="关闭生成来源">×</button></form><h2>生成来源</h2><p>${escape(meta.source?.name || '画布图片')} · ${escape(meta.model || '模型未记录')}</p><p>${meta.createdAt?escape(new Date(meta.createdAt).toLocaleString()):'这张图片没有完整的生成记录，仍可作为参考图继续创作。'}${meta.parentResultId?' · 来自上一轮结果的分支':''}</p><div class="provenance-references">${(meta.references || []).map(ref=>`<a href="${escape(core.safeUrl(ref.url))}" target="_blank" rel="noopener"><img src="${escape(core.safeUrl(ref.url))}" alt="${escape(ref.name || '参考图')}"></a>`).join('')}</div><pre>${escape(meta.prompt || '未记录提示词')}</pre><button type="button" data-create-branch>以这张图创建分支</button><p role="status"></p>`;
+        dialog.innerHTML=`<form method="dialog"><button aria-label="关闭生成来源">×</button></form><h2>生成来源</h2><p>${escape(meta.source?.name || '画布图片')} · ${escape(meta.model || '模型未记录')} · ${escape(meta.size || '画幅未记录')}</p>${meta.character?.id?`<p>角色：${escape(meta.character.name)}（已保存身份）</p>`:''}<p>${meta.createdAt?escape(new Date(meta.createdAt).toLocaleString()):'这张图片没有完整的生成记录，仍可作为参考图继续创作。'}${meta.parentResultId?' · 来自上一轮结果的分支':''}</p><div class="provenance-references">${(meta.references || []).map(ref=>`<a href="${escape(core.safeUrl(ref.url))}" target="_blank" rel="noopener"><img src="${escape(core.safeUrl(ref.url))}" alt="${escape(ref.name || '参考图')}"></a>`).join('')}</div><pre>${escape(meta.prompt || '未记录提示词')}</pre><button type="button" data-create-branch>以这张图创建分支</button><button type="button" data-continue-edit>继续编辑</button><button type="button" data-save-asset>保存素材</button><button type="button" data-add-canvas>加入其他画布</button><p role="status"></p>`;
         document.body.append(dialog);dialog.showModal();
         dialog.addEventListener('close',()=>dialog.remove());
+        const result={...meta,id:meta.resultId || '',url:image.url,name:image.name || canvasTitle || '画布结果'};
+        [['[data-continue-edit]','toEditor'],['[data-save-asset]','saveAsset'],['[data-add-canvas]','toCanvas']].forEach(([selector,action])=>{
+            dialog.querySelector(selector).onclick=async event=>{
+                event.target.disabled=true;
+                try {await global.CreationFlow[action](action==='toEditor'?{...result,references:[{url:image.url,name:image.name || '画布结果'}],parentResultId:meta.resultId || ''}:result);} catch(error){dialog.querySelector('[role=status]').textContent=error.message;}
+                finally {event.target.disabled=false;}
+            };
+        });
         dialog.querySelector('[data-create-branch]').onclick=async event=>{
             event.target.disabled=true;
             try{

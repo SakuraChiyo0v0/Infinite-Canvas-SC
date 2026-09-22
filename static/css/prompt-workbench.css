@@ -49,3 +49,9 @@
 .pw-recipes summary { margin:0; }
 .pw-character { display:flex; flex-direction:column; gap:10px; padding:12px; background:var(--soft); border-radius:12px; }
 [data-prompt-edit-start][hidden] { display:none!important; }
+
+/* Primary action stays outside the independently scrolling editor. */
+.pw-primary-actions { flex:0 0 auto; position:sticky; top:0; z-index:4; display:grid; gap:8px; padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
+.pw-primary-actions .pw-status:empty { display:none; }
+.pw-model-empty { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12px; line-height:1.6; }
+.pw-primary-actions .pw-status { max-height:80px; overflow:auto; }

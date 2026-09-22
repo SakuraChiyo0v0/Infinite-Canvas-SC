@@ -1413,18 +1413,18 @@
         </script>
 
         <main class="stage">
-            <iframe id="frame-zimage" title="文生图" data-src="/static/online.html?v=2026.09.22.ux1" class="active" scrolling="yes"></iframe>
-            <iframe id="frame-enhance" title="细节增强" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/enhance.html?v=2026.08.28.1790009071" scrolling="yes"></iframe>
-            <iframe id="frame-klein" title="图片编辑" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/klein.html?v=2026.08.28.1790055231" scrolling="yes"></iframe>
-            <iframe id="frame-prompt-reverse" title="提示词反推" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/prompt-reverse.html?v=2026.08.28.1790055231" scrolling="yes"></iframe>
-            <iframe id="frame-angle" title="角度控制" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/angle.html?v=2026.08.28.1790044031" scrolling="yes"></iframe>
+            <iframe id="frame-zimage" title="文生图" data-src="/static/online.html?v=2026.08.28.1790082286" class="active" scrolling="yes"></iframe>
+            <iframe id="frame-enhance" title="细节增强" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/enhance.html?v=2026.08.28.1790082433" scrolling="yes"></iframe>
+            <iframe id="frame-klein" title="图片编辑" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/klein.html?v=2026.08.28.1790082286" scrolling="yes"></iframe>
+            <iframe id="frame-prompt-reverse" title="提示词反推" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/prompt-reverse.html?v=2026.08.28.1790060298" scrolling="yes"></iframe>
+            <iframe id="frame-angle" title="角度控制" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/angle.html?v=2026.08.28.1790082433" scrolling="yes"></iframe>
             <iframe id="frame-gpt-chat" title="GPT 对话" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/gpt-chat.html?v=2026.08.28.1790009071" scrolling="yes"></iframe>
-            <iframe id="frame-prompts" title="提示词" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/asset-manager.html?v=2026.09.22.ux-audit" scrolling="yes"></iframe>
-            <iframe id="frame-characters" title="角色" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/characters.html?v=2026.09.22.ux1" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" title="素材库" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/asset-manager.html?v=2026.09.22.ux-audit" scrolling="yes"></iframe>
+            <iframe id="frame-prompts" title="提示词" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/asset-manager.html?v=2026.08.28.1790082433" scrolling="yes"></iframe>
+            <iframe id="frame-characters" title="角色" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/characters.html?v=2026.08.28.1790082433" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" title="素材库" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/asset-manager.html?v=2026.08.28.1790082433" scrolling="yes"></iframe>
             <iframe id="frame-api-settings" title="API 设置" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/api-settings.html?v=2026.08.28.1790009071" scrolling="yes"></iframe>
             <iframe id="frame-comfyui-settings" title="本地模型设置" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/comfyui-settings.html?v=2026.08.28.1790009071" scrolling="yes"></iframe>
-            <iframe id="frame-canvas" title="无限画布" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/canvas-list.html?v=2026.09.22.ux-audit" scrolling="yes"></iframe>
+            <iframe id="frame-canvas" title="无限画布" hidden inert aria-hidden="true" tabindex="-1" data-src="/static/canvas-list.html?v=2026.08.28.1790082433" scrolling="yes"></iframe>
 
         </main>
     </div>
@@ -1554,6 +1554,14 @@
 
         window.addEventListener('message', event => {
             if (event.origin && event.origin !== location.origin) return;
+            const creationSource = event.origin === location.origin && ['frame-zimage','frame-klein','frame-prompts','frame-characters','frame-asset-manager','frame-canvas'].some(id=>event.source === document.getElementById(id)?.contentWindow);
+            if(creationSource && event.data?.type === 'creation-flow-open' && ['klein','zimage','prompts','api-settings'].includes(event.data.target)){
+                const id=event.data.target, frame=document.getElementById('frame-'+id);
+                const notify=()=>frame.contentWindow?.postMessage({type:'creation-flow-ready'},location.origin);
+                frame.addEventListener('load',notify,{once:true});
+                switchUI(document.querySelector(`[onclick="switchUI(this, '${id}')"]`),id);
+                notify();return;
+            }
             if(event.origin === location.origin && event.source === document.getElementById('frame-prompt-reverse')?.contentWindow && event.data?.type === 'prompt-reverse-use' && ['zimage','klein'].includes(event.data.target)){
                 const id=event.data.target;
                 const nav=[...document.querySelectorAll('.nav-item')].find(el=>el.getAttribute('onclick') === `switchUI(this, '${id}')`);
@@ -1561,16 +1569,16 @@
                 document.getElementById('frame-'+id).contentWindow?.postMessage({type:'prompt-handoff-ready'},location.origin);
                 return;
             }
-            if(event.source === document.getElementById('frame-canvas')?.contentWindow && event.data?.type === 'prompt-workbench-branch' && /^[a-f0-9-]{36}$/.test(event.data.id || '')){
+            if(creationSource && event.data?.type === 'prompt-workbench-branch' && /^[a-f0-9-]{36}$/.test(event.data.id || '')){
                 const target=document.getElementById('frame-prompts');
-                const branchUrl=new URL('/static/asset-manager.html',location.origin);
-                branchUrl.searchParams.set('branch',event.data.id);
-                branchUrl.hash='prompts?branch='+encodeURIComponent(event.data.id);
-                target.src=branchUrl.href;
+                sessionStorage.setItem('studio_creation_handoff_v1',JSON.stringify({id:crypto.randomUUID(),target:'prompts',payload:{branchId:event.data.id},createdAt:Date.now()}));
+                const notify=()=>target.contentWindow?.postMessage({type:'creation-flow-ready'},location.origin);
+                target.addEventListener('load',notify,{once:true});
                 switchUI(document.querySelector('[onclick="switchUI(this, \'prompts\')"]'),'prompts');
+                notify();
                 return;
             }
-            if(['frame-prompts','frame-characters'].some(id=>event.source === document.getElementById(id)?.contentWindow) && event.data?.type === 'prompt-workbench-open-canvas' && /^[a-f0-9]{32}$/.test(event.data.id || '')){
+            if(creationSource && event.data?.type === 'prompt-workbench-open-canvas' && /^[a-f0-9]{32}$/.test(event.data.id || '')){
                 const frame = document.getElementById('frame-canvas');
                 const url = '/static/smart-canvas.html?id=' + encodeURIComponent(event.data.id);
                 frame.src = url;

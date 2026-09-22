@@ -368,3 +368,6 @@ html[data-studio-scale="off"].studio-scale-managed .ws-paste-btn span {
         opacity:1;
     }
 }
+
+.ws-create-card{width:min(440px,calc(100vw - 24px))}.ws-create-toggle{align-items:stretch}.ws-create-toggle-btn{display:flex;flex-direction:column;gap:7px;text-align:left;white-space:normal;padding:14px}.ws-create-toggle-btn strong{font-size:14px}.ws-create-toggle-btn span{font-size:12px;line-height:1.65;font-weight:400;opacity:.8}
+.ws-create-toggle-btn{height:auto;min-height:120px;min-width:0}.ws-create-toggle{flex-shrink:0}.ws-create-actions{flex-shrink:0}

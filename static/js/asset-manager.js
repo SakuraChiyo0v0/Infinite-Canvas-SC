@@ -65,6 +65,7 @@ let selectedPromptIds = new Set();
 let assetQuery = '';
 let workflowQuery = '';
 let promptQuery = '';
+let promptPurpose = '';
 let assetManageMode = false;
 let workflowManageMode = false;
 let promptManageMode = false;
@@ -581,8 +582,8 @@ function assetCountForLibrary(lib){
         .reduce((sum, cat) => sum + ((cat.items || []).length), 0);
 }
 function promptLibraries(){
-    const libs = Array.isArray(promptLibrary.libraries) ? promptLibrary.libraries.filter(Boolean) : [];
-    if(!libs.length) return [{id:'system', name:'系统提示词库', system:true, items:[], categories:[]}];
+    let libs = Array.isArray(promptLibrary.libraries) ? promptLibrary.libraries.filter(Boolean) : [];
+    if(!libs.length) libs=[{id:'system', name:'系统提示词库', system:true, items:[], categories:[]}];
     const branches=promptWorkbenchPage?PromptWorkbench.branchLibrary():null;
     return [...libs, ...(branches?.items.length?[branches]:[])];
 }
@@ -1163,6 +1164,7 @@ function currentPromptItems(){
     const query = promptQuery.trim().toLowerCase();
     return (lib?.items || []).filter(item => {
         if(activePromptCategory !== 'all' && (item.category || 'custom') !== activePromptCategory) return false;
+        if(promptPurpose && window.PromptCreation?.mode(item)!==promptPurpose)return false;
         if(!query) return true;
         return [item.name, item.scene, item.positive, item.negative, item.category].join(' ').toLowerCase().includes(query);
     });
@@ -1619,6 +1621,7 @@ function renderCanvasAssetDetail(item){
                     : `<div class="detail-media-frame">${assetThumb(item)}</div>`}
             </div>
             <div class="detail-body">
+                ${renderAssetCreationActions(item,'canvas')}
                 <div class="detail-name">${escapeHtml(item.name || '画布资产')}</div>
                 <div class="detail-meta-grid">
                     <div class="detail-meta"><span>类型</span><strong>${escapeHtml(canvasAssetKindLabel(item))}</strong></div>
@@ -1880,6 +1883,7 @@ function renderLocalUploadDetail(item){
         <div class="detail-scroll">
             <div class="detail-media"><button class="detail-media-frame detail-media-zoomable" type="button" data-localup-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button></div>
             <div class="detail-body">
+                ${renderAssetCreationActions(item,'local')}
                 <input class="detail-name-input" data-localup-inline-name="${escapeAttr(item.id)}" type="text" value="${escapeAttr(item.name || '本地素材')}" title="直接修改名称">
                 <div class="detail-meta-grid">
                     <div class="detail-meta"><span>类型</span><strong>${escapeHtml(assetKindLabel(item))}</strong></div>
@@ -2361,13 +2365,43 @@ function renderAvatarSection(item){
         ${registerUI}
     </div>`;
 }
+function renderAssetCreationActions(item,kind){
+    if(assetKind(item)!=='image')return '';
+    const attrs=`data-creation-kind="${kind}" data-creation-id="${escapeAttr(item.id)}"`;
+    const meta=item.provenance;
+    const sourceParts=[];
+    if(meta?.character?.name || meta?.character?.id)sourceParts.push(`角色：${meta.character.name || meta.character.id}`);
+    if(meta?.source?.name || meta?.source?.itemId)sourceParts.push(`${meta.source.itemId || meta.source.libraryId ? '模板' : '来源'}：${meta.source.name || meta.source.itemId}`);
+    const sourceLabel=sourceParts.join(' · ') || (meta ? '来源已记录，未记录角色或模板' : '来源未记录，仍可作为参考图继续创作');
+    return `<p class="asset-creation-source">${escapeHtml(sourceLabel)}</p><div class="asset-creation-actions"><button class="asset-btn primary" type="button" data-creation-action="workbench" ${attrs}>用图继续创作</button><button class="asset-btn" type="button" data-creation-action="editor" ${attrs}>图片编辑</button><button class="asset-btn" type="button" data-creation-action="canvas" ${attrs}>加入画布</button></div>`;
+}
+function assetCreationResult(item){
+    const meta=item.provenance ? JSON.parse(JSON.stringify(item.provenance)) : {};
+    return {...meta,id:meta.resultId || item.id,url:item.url,name:item.name,prompt:meta.prompt || item.caption || '',
+        references:meta.references || [],character:meta.character || null,source:meta.source || null,provenance:meta};
+}
+async function runAssetCreationAction(button){
+    if(button.disabled)return;
+    const kind=button.dataset.creationKind,id=button.dataset.creationId;
+    const item=kind==='local'?findLocalUpload(id):kind==='canvas'?findCanvasAssetItem(id):findAssetItem(id);
+    if(!item?.url)return;
+    button.disabled=true;
+    try{
+        const result=assetCreationResult(item);
+        if(button.dataset.creationAction==='canvas')await window.CreationFlow.toCanvas(result);
+        else if(button.dataset.creationAction==='editor')await window.CreationFlow.toEditor({...result,parentResultId:result.id,references:[{url:item.url,name:item.name || '参考图片',kind:'image'}]});
+        else await window.CreationFlow.toWorkbench(result);
+    }finally{
+        button.disabled=false;
+    }
+}
 function renderAssetDetail(item){
     if(!item) return `<div class="panel-head"><div class="panel-title"><strong>素材预览</strong><span>选择一个素材查看详情</span></div></div><div class="detail-scroll"><div class="detail-empty"><i data-lucide="image"></i><span>暂无可预览素材</span></div></div>`;
     const isImage = assetKind(item) === 'image';
     if(assetEditMode && item.id === selectedAssetId){
         return `
             <div class="panel-head">
-                <div class="panel-title"><strong>编辑素材</strong><span>当前分组内直接保存</span></div>
+                <div class="panel-title"><strong>编辑素材资料</strong><span>当前分组内直接保存</span></div>
                 <div class="panel-actions">
                     <button class="asset-btn primary" type="button" data-asset-edit-save="${escapeAttr(item.id)}"><i data-lucide="check"></i><span>保存</span></button>
                     <button class="asset-icon-btn" type="button" data-asset-edit-cancel title="取消"><i data-lucide="x"></i></button>
@@ -2391,13 +2425,14 @@ function renderAssetDetail(item){
             <div class="panel-title"><strong>素材预览</strong><span>${escapeHtml(assetKindLabel(item))}</span></div>
             <div class="panel-actions">
                 <button class="asset-icon-btn" type="button" data-asset-download="${escapeAttr(item.id)}" title="下载素材"><i data-lucide="download"></i></button>
-                <button class="asset-icon-btn" type="button" data-asset-edit-start="${escapeAttr(item.id)}" title="编辑"><i data-lucide="pencil"></i></button>
+                <button class="asset-btn" type="button" data-asset-edit-start="${escapeAttr(item.id)}" title="编辑资料"><i data-lucide="pencil"></i><span>编辑资料</span></button>
                 <button class="asset-icon-btn danger ${pendingDeleteAssetId === item.id ? 'detail-confirm' : ''}" type="button" data-asset-delete="${escapeAttr(item.id)}" title="${pendingDeleteAssetId === item.id ? '再次点击确认删除' : '删除'}"><i data-lucide="trash-2"></i></button>
             </div>
         </div>
         <div class="detail-scroll">
             <div class="detail-media"><button class="detail-media-frame detail-media-zoomable" type="button" data-asset-preview="${escapeAttr(item.id)}" title="点击放大预览">${assetThumb(item)}</button></div>
             <div class="detail-body">
+                ${renderAssetCreationActions(item,'asset')}
                 <input class="detail-name-input" data-asset-inline-name="${escapeAttr(item.id)}" type="text" value="${escapeAttr(item.name || 'asset')}" title="直接修改名称">
                 <div class="detail-meta-grid">
                     <div class="detail-meta"><span>类型</span><strong>${escapeHtml(assetKindLabel(item))}</strong></div>
@@ -2450,6 +2485,7 @@ function renderPromptManager(){
                 </div>
                 <div class="asset-tools">
                     <label class="asset-search-wrap"><i data-lucide="search"></i><input id="promptSearch" class="asset-search" type="search" value="${escapeAttr(promptQuery)}" placeholder="搜索名称、说明或正文"></label>
+                    <select id="promptPurpose" class="manage-select" aria-label="模板用途">${['','文生图','需要参考图','自由创作'].map(value=>`<option value="${value}" ${promptPurpose===value?'selected':''}>${value || '全部用途'}</option>`).join('')}</select>
                     <button class="asset-btn primary" type="button" data-prompt-new ${readonly ? 'disabled' : ''}><i data-lucide="file-plus-2"></i><span>新增</span></button>
                     <button class="asset-btn ${promptManageMode ? 'primary' : ''}" type="button" data-prompt-manage><i data-lucide="list-checks"></i><span>${promptManageMode ? '完成管理' : '批量管理'}</span></button>
                 </div>
@@ -2835,6 +2871,7 @@ function downloadAssetItem(id){
 const SMART_CANVAS_ASSET_INBOX_KEY = 'smart_canvas_asset_inbox';
 function canvasInboxAssetFromItem(item){
     const out = {url:item?.url || '', name:item?.name || '素材', kind:item?.kind || ''};
+    if(item?.provenance)out.provenance=JSON.parse(JSON.stringify(item.provenance));
     ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
         const n = Number(item?.[key]);
         if(Number.isFinite(n) && n > 0) out[key] = n;
@@ -3327,6 +3364,8 @@ async function saveLocalUploadCaption(id){
 }
 async function handleClick(event){
     const target = event.target;
+    const creationAction=target.closest?.('[data-creation-action]');
+    if(creationAction){await runAssetCreationAction(creationAction);return;}
     const navMenu = target.closest?.('[data-prompt-menu]');
     if(navMenu){ openPromptNavMenu(navMenu); return; }
     if(target.closest?.('[data-prompt-drag-handle]')) return;
@@ -4504,7 +4543,7 @@ async function pasteAssetClipboard(){
         assetLibrary = data.library || assetLibrary;
         setStatus(`已移动 ${data.moved || 0} 个素材`);
     } else {
-        const items = (assetClipboard.items || []).map(item => ({url:item.url, name:item.name || 'asset'})).filter(item => item.url);
+        const items = (assetClipboard.items || []).map(item => ({url:item.url, name:item.name || 'asset',...(item.provenance?{provenance:JSON.parse(JSON.stringify(item.provenance))}:{})})).filter(item => item.url);
         const data = await apiJson('/api/asset-library/items/batch', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
@@ -4872,6 +4911,7 @@ root.addEventListener('input', event => {
     }
 });
 root.addEventListener('change', event => {
+    if(event.target.id==='promptPurpose'){promptPurpose=event.target.value;renderPromptSearchResults();return;}
     const inlineLocalUploadName = event.target.closest?.('[data-localup-inline-name]');
     if(inlineLocalUploadName){
         saveLocalUploadInlineName(inlineLocalUploadName.dataset.localupInlineName || '', inlineLocalUploadName.value || '').catch(err => setStatus(err.message || '保存失败'));
@@ -5028,3 +5068,26 @@ window.addEventListener('message', event => {
         loadAll().catch(err => setStatus(err.message || '刷新失败'));
     }
 });
+
+// Locate a requested template without replacing its autosaved creation draft.
+window.CreationFlow?.listen('prompts', async payload => {
+    if(!promptWorkbenchPage)return false;
+    if(!payload.libraryId && !payload.itemId && !payload.url && !payload.branchId)return true;
+    if((promptEditMode || promptCreateMode) && !await leavePromptEditor())return false;
+    if(payload.branchId){
+        await PromptWorkbench.load(true);
+        const branches=PromptWorkbench.branchLibrary();
+        if(!branches.items.some(item=>item.id===payload.branchId))throw Error('创作分支尚未加载，请重试接收');
+        activeTab='prompts';activePromptLibraryId=branches.id;activePromptCategory='all';selectedPromptId=payload.branchId;
+        promptQuery='';promptPurpose='';setPromptExpanded(branches.id,true);render();return true;
+    }
+    if(!payload.libraryId && !payload.itemId){await window.CreationFlow.toWorkbench(payload);return true;}
+    if(!promptLibrary.libraries.length)await loadAll();
+    const lib=promptLibraries().find(item=>item.id===payload.libraryId || (!payload.libraryId && item.items?.some(prompt=>prompt.id===payload.itemId)));
+    if(!lib)throw Error('这份提示词库已不可用，请重新选择');
+    if(payload.itemId && !lib.items?.some(item=>item.id===payload.itemId))throw Error('这条提示词已不可用，请重新选择');
+    activeTab='prompts';activePromptLibraryId=lib.id;activePromptCategory='all';selectedPromptId=payload.itemId || '';
+    promptQuery='';promptPurpose='';setPromptExpanded(lib.id,true);render();return true;
+});
+
+window.addEventListener('prompt-workbench-providers',event=>{apiProviders=event.detail || [];});

@@ -32,6 +32,7 @@ const ctx = vm.createContext({console, Date, Map, Set, Promise, setTimeout,
     stripImageGenerationMeta:img=>img, copyMediaSizeFields:(_item,base)=>base,
     mediaNodeDefaultScale:()=>1, MEDIA_NODE_DEFAULT_SCALE:1, MEDIA_GROUP_PREVIOUS_DEFAULT_SCALE:1, MEDIA_GROUP_DEFAULT_SCALE:1,
 });
+vm.runInContext(read('static/js/canvas-lineage.js'),ctx);
 vm.runInContext(read('static/js/smart-collector.js'),ctx);
 for(const name of ['isSmartImageNode','isSmartGroupNode','connectInputNode','tagLoopOutputSlot','createLoopOutputSlot','imageRunProvenance','finalizeSmartPendingTask','mergeSmartNode']) vm.runInContext(fn(name),ctx);
 const run = text=>vm.runInContext(text,ctx);
@@ -52,6 +53,8 @@ assert.equal(ctx.nodes.length,2,'completed runtime slots are removed');
 assert.equal(ctx.nodes[1].entries.length,8);
 assert.equal(new Set(ctx.nodes[1].entries.map(e=>e.sequence)).size,8);
 assert.ok(ctx.nodes[1].entries.every(e=>e.status==='saved'));
+assert.ok(ctx.nodes[1].entries.every(e=>e.provenance.character.id==='role-a' && e.provenance.source.itemId==='portrait'));
+assert.deepEqual(new Set(ctx.nodes[1].entries.map(e=>e.provenance.parentResultId)),new Set(Array.from({length:8},(_,i)=>'parent-'+i)),'collector retains selected lineage after runtime nodes are removed');
 
 failSave=true;
 run("const failedJob=createCollectorJob(nodes[0]); failedJob.pendingTasks=[{taskId:'fail-save'}]; finalizeSmartPendingTask(failedJob,'fail-save',[{url:'/assets/retry.png',provenance:{version:1,resultId:'backend-result',parentResultId:'selected-parent',character:{id:'role-b'}}}]);");
@@ -69,10 +72,12 @@ assert.equal(requests.length,count,'saved records are not resubmitted');
 run("nodes=JSON.parse(JSON.stringify(nodes)); nodes[1].entries.at(-1).status='saving'; resumeCollectors();");
 await drain();
 assert.equal(ctx.nodes[1].entries.at(-1).status,'saved','refresh resumes interrupted saves');
+assert.equal(ctx.nodes[1].entries.at(-1).provenance.resultId,'backend-result');
+assert.equal(ctx.nodes[1].entries.at(-1).provenance.character.id,'role-b','retry and refresh preserve backend provenance');
 const html=run('collectorBodyHtml(nodes[1])');
 assert.equal((html.match(/<img /g)||[]).length,6,'default preview is bounded');
 assert.ok(!run("safeCollectorUrl('javascript:alert(1)')"));
 
 run("canvas.connections=[]; createLoopOutputSlot(nodes[0],30,0,{});");
 assert.equal(ctx.nodes.at(-1).collectorJob,undefined,'disconnect restores original loop outputs');
-console.log('Collector: opt-in routing, parallel results, cleanup, retry, persistence, bounded previews passed');
+console.log('Collector: opt-in routing, parallel results, cleanup, retry, persistence, bounded previews and provenance passed');

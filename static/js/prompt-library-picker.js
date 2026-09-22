@@ -28,7 +28,7 @@
         dialog.className = 'prompt-library-dialog';
         dialog.setAttribute('aria-label', '提示词库');
         dialog.innerHTML = `
-            <header class="prompt-library-header"><div><strong>提示词库</strong><p>与素材库共用 · 选择后填入当前提示词</p></div><button type="button" data-close aria-label="关闭提示词库">×</button></header>
+            <header class="prompt-library-header"><div><strong>提示词库</strong><p>与提示词页共用 · 选择后填入当前提示词</p></div><button type="button" data-close aria-label="关闭提示词库">×</button></header>
             <div class="prompt-library-filters">
                 <label>词库<select data-library></select></label>
                 <label>分类<select data-category></select></label>
@@ -39,7 +39,7 @@
                 <div class="prompt-library-list" data-list aria-label="提示词列表"></div>
                 <section class="prompt-library-preview"><h3 data-title>提示词预览</h3><p data-note></p><label>完整正文<textarea data-content readonly></textarea></label></section>
             </div>
-            <footer class="prompt-library-footer"><button type="button" data-close>取消</button><span></span><button type="button" data-append disabled>追加到末尾</button><button type="button" data-replace disabled class="prompt-library-primary">替换正文</button></footer>`;
+            <footer class="prompt-library-footer"><button type="button" data-close>取消</button><button type="button" data-manage>管理提示词</button><span></span><button type="button" data-fill hidden>去填写变量</button><button type="button" data-append disabled>追加到末尾</button><button type="button" data-replace disabled class="prompt-library-primary">替换正文</button></footer>`;
         document.body.appendChild(dialog);
         const get = selector => dialog.querySelector(selector);
         const librarySelect = get('[data-library]');
@@ -57,7 +57,10 @@
             get('[data-title]').textContent = item?.name || '提示词预览';
             get('[data-note]').textContent = item?.scene || '';
             get('[data-content]').value = item ? promptLibraryContent(item) : '';
-            replace.disabled = append.disabled = !item;
+            const variables = globalThis.CreationFlow?.variables?.(promptLibraryContent(item)) || [...promptLibraryContent(item).matchAll(/\{\{([^{}]+)\}\}/g)].map(m=>m[1]);
+            replace.disabled = append.disabled = !item || variables.length > 0;
+            if(get('[data-fill]'))get('[data-fill]').hidden = !variables.length;
+            if(variables.length) get('[data-note]').textContent = `需要填写 ${variables.length} 项变量，请到创作台填写后生成。`;
             [...list.children].forEach(row => row.setAttribute('aria-pressed', String(row.dataset.id === item?.id)));
         }
         function renderItems() {
@@ -77,7 +80,7 @@
                 row.onclick = () => preview(item);
                 list.appendChild(row);
             });
-            status.textContent = items.length ? `${items.length} 条提示词` : (library()?.items?.length ? '没有匹配的提示词，试试其他分类或关键词。' : '这个词库还没有提示词，可在素材库中添加。');
+            status.textContent = items.length ? `${items.length} 条提示词` : (library()?.items?.length ? '没有匹配的提示词，试试其他分类或关键词。' : '这个词库还没有提示词，可在提示词页中添加。');
             preview(items.find(item => item.id === preferredId) || items[0]);
         }
         function renderCategories() {
@@ -86,6 +89,8 @@
             selected = null;
             renderItems();
         }
+        if(get('[data-manage]'))get('[data-manage]').onclick = () => { globalThis.CreationFlow?.openPrompts?.({libraryId:librarySelect.value}); dialog.close(); };
+        if(get('[data-fill]'))get('[data-fill]').onclick = () => { if(selected){ globalThis.CreationFlow?.openPrompts?.({libraryId:librarySelect.value,itemId:selected.id}); dialog.close(); } };
         librarySelect.onchange = renderCategories;
         categorySelect.onchange = renderItems;
         search.oninput = renderItems;

@@ -564,8 +564,8 @@ function openCreateCard(worldPt){
         <div class="ws-create-title">${L('新建画布','New canvas')}</div>
         <input class="ws-create-input" type="text" maxlength="80" aria-label="${L('画布名称（可留空）','Canvas name (optional)')}" placeholder="${L('画布名称（可留空）','Canvas name (optional)')}">
         <div class="ws-create-toggle">
-            <button class="ws-create-toggle-btn active" type="button" aria-pressed="true" data-kind="classic">${L('普通画布','Classic')}</button>
-            <button class="ws-create-toggle-btn" type="button" aria-pressed="false" data-kind="smart">${L('智能画布','Smart')}</button>
+            <button class="ws-create-toggle-btn active" type="button" aria-label="${L('普通画布','Classic')}" aria-pressed="true" data-kind="classic"><strong>${L('普通画布','Classic')}</strong><span>${L('连接图片、提示词和生成节点，搭建可重复运行的工作流。','Connect image, prompt and generation nodes into reusable workflows.')}</span></button>
+            <button class="ws-create-toggle-btn" type="button" aria-label="${L('智能画布','Smart')}" aria-pressed="false" data-kind="smart"><strong>${L('智能画布','Smart')}</strong><span>${L('围绕图片直接创作、改图和扩展；推荐从这里开始。','Create, edit and expand around images. A good place to start.')}</span></button>
         </div>
         <div class="ws-create-actions">
             <button class="ws-create-confirm" type="button">${L('创建','Create')}</button>

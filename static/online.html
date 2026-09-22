@@ -6,8 +6,10 @@
     <link rel="icon" href="/static/images/logo.png" type="image/png">
     <title>文生图</title>
     <script src="/static/js/image-capabilities.js?v=2026.08.28.1790008596"></script>
-    <link rel="stylesheet" href="/static/css/prompt-library-picker.css?v=2026.08.28.1790010587">
-    <script src="/static/js/prompt-library-picker.js?v=2026.08.28.1790043937" defer></script>
+    <link rel="stylesheet" href="/static/css/prompt-library-picker.css?v=2026.08.28.1790081366">
+    <script src="/static/js/prompt-creation-core.js?v=2026.08.28.1790081428" defer></script>
+    <script src="/static/js/creation-flow.js?v=2026.08.28.1790082362" defer></script>
+    <script src="/static/js/prompt-library-picker.js?v=2026.08.28.1790080914" defer></script>
 <script>
         (function(){
             try {
@@ -76,7 +78,7 @@
 
     </style>
     <link rel="stylesheet" href="/static/css/image-tools.css?v=2026.08.28.1789986293">
-<script src="/static/js/prompt-handoff.js?v=2026.08.28.1790043887" defer></script>
+<script src="/static/js/prompt-handoff.js?v=2026.08.28.1790081428" defer></script>
 </head>
 <body class="image-tool image-tool--online">
     <div class="container-box min-h-screen flex flex-col">
@@ -94,6 +96,9 @@
                         <button type="button" class="prompt-library-trigger" data-prompt-library-target="promptInput">提示词库</button>
                     </div>
                     <textarea id="promptInput" rows="5" class="nano-input w-full p-6 rounded-3xl text-sm outline-none resize-none placeholder-gray-300" placeholder="描述想生成的画面..." data-i18n-placeholder="online.promptPlaceholder"></textarea>
+                    <div class="tool-flow-actions"><button type="button" onclick="pickCreationReference()">选择角色 / 素材</button><button type="button" onclick="CreationFlow.openPrompts({})">打开提示词页</button></div>
+                    <p id="creationContext" class="tool-flow-status" role="status"></p>
+                    <p id="toolFlowStatus" class="tool-flow-status" role="status" aria-live="polite"></p>
                 </section>
 
                 <div class="tool-panel">
@@ -165,6 +170,7 @@
                     </div>
                 </div>
 
+                <div class="tool-flow-actions"><button type="button" onclick="CreationFlow.configureModels()">配置图像模型</button><button type="button" onclick="retryToolModels()">重新加载模型</button></div>
                 <button id="genBtn" onclick="submitImage()" class="glass-btn w-full py-5 text-white rounded-3xl font-bold flex items-center justify-center gap-3 shadow-lg">
                     <i data-lucide="zap" class="w-4 h-4 text-yellow-400"></i>
                     <span class="tracking-[0.3em] text-[11px] uppercase" data-i18n="online.generate">Generate</span>
@@ -181,6 +187,7 @@
             </div>
         </main>
 
+<div class="tool-flow-actions" id="currentResultActions" hidden><button type="button" onclick="resultAction('edit',currentResult)">用结果继续编辑</button><button type="button" onclick="resultAction('canvas',currentResult)">加入画布</button><button type="button" onclick="resultAction('asset',currentResult)">保存到素材库</button><button type="button" onclick="resultAction('workbench',currentResult)">去创作台</button></div>
         <section class="mt-32">
             <div class="flex items-center gap-6 mb-12"><h2 class="tool-archive-title">Archive <span data-i18n="studio.archives">归档</span></h2><div class="h-px flex-1 bg-gray-100"></div></div>
             <div id="masonry" class="masonry-grid"></div>
@@ -205,13 +212,51 @@
                     <span class="text-[9px] font-black text-gray-300 uppercase tracking-widest block mb-2">Prompt</span>
                     <p id="lightboxPrompt" class="text-gray-700 text-sm leading-relaxed max-h-32 overflow-y-auto pr-2"></p>
                 </div>
-                <button id="sameStyleBtn" onclick="applySameStyle()" class="bg-black text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i><span data-i18n="online.reuse">Reuse</span></button>
+                <button id="sameStyleBtn" onclick="applySameStyle()" class="bg-black text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i><span>按原条件复用</span></button>
             </div>
+            <p id="lightboxFlowStatus" class="tool-flow-status" role="status"></p><div class="tool-flow-actions"><button type="button" onclick="resultAction('edit',currentLightboxData)">用结果继续编辑</button><button type="button" onclick="resultAction('canvas',currentLightboxData)">加入画布</button><button type="button" onclick="resultAction('asset',currentLightboxData)">保存到素材库</button><button type="button" onclick="resultAction('workbench',currentLightboxData)">去创作台</button></div>
         </div>
     </div>
 
     <script>
         lucide.createIcons();
+
+        let creationContext = {character:null,source:null,parentResultId:''};
+        function flowStatus(text){ for(const id of ['toolFlowStatus','lightboxFlowStatus']){const el=document.getElementById(id);if(el)el.textContent=text;} }
+        function showCreationContext(){
+            document.getElementById('creationContext').textContent=[creationContext.character ? '使用角色：'+creationContext.character.name : '',creationContext.source?.name ? '来源：'+creationContext.source.name : '',creationContext.parentResultId ? '继续修改上一张结果' : ''].filter(Boolean).join(' · ');
+        }
+        function historyResult(data={}){
+            const image=data.image_items?.find(item=>item.url===(data.url || data.images?.[0])) || {};
+            const p=data.params || {}, meta=image.provenance || data.provenance || {};
+            const local=(!!data.workflow_json || !!p['278']?.image) && !p.provider_id && !data.provider_id;
+            const localRefs=['278','270','292'].filter(id=>p[id]?.image).map(id=>({url:'/api/view?filename='+encodeURIComponent(p[id].image)+'&type=input',name:p[id].image,comfy_name:p[id].image}));
+            const dims=p['156'] || p['152'];
+            const refs=p.reference_images || meta.references || data.references || localRefs;
+            return {...meta,natural_w:image.natural_w || image.width || data.natural_w,natural_h:image.natural_h || image.height || data.natural_h,id:meta.resultId || data.id || String(data.timestamp || ''),url:data.url || data.images?.[0] || '',
+                prompt:data.prompt ?? meta.prompt ?? p['168']?.text ?? '',provider:data.provider_id || p.provider_id || meta.provider || (local?'local-comfy':''),
+                model:data.model || p.model || meta.model || (local?(String(data.workflow_json).toLowerCase().includes('klein')?'FLUX.2 Klein 图片编辑':'Z-Image'):''),
+                size:p.size || data.size || meta.size || (dims?.width && dims?.height?dims.width+'x'+dims.height:''),quality:p.quality || meta.quality || 'auto',n:p.n || meta.n || 1,
+                operation:p.operation || meta.operation || (refs.length?'edit':'generate'),references:refs,character:meta.character || data.character || null,
+                source:meta.source || data.source || null,parentResultId:meta.parentResultId || '',createdAt:meta.createdAt || Number(data.timestamp || 0)*1000};
+        }
+        async function resultAction(action,data){
+            if(!data)return;
+            const result=historyResult(data);
+            try{
+                if(!window.CreationFlow)throw Error('创作入口尚未加载，请刷新页面');
+                if(action==='edit'){await CreationFlow.toEditor({...result,references:[{url:result.url,name:'上一轮结果'}],parentResultId:result.id});if(typeof closeLightbox==='function')closeLightbox();}
+                if(action==='canvas')await CreationFlow.toCanvas(result);
+                if(action==='asset')await CreationFlow.saveAsset(result);
+                if(action==='workbench')await CreationFlow.toWorkbench(result);
+            }catch(error){flowStatus(error.message);}
+        }
+        function validateVariables(){
+            const names=window.CreationFlow?.variables?.(document.getElementById('promptInput').value) || [...document.getElementById('promptInput').value.matchAll(/\{\{([^{}]+)\}\}/g)].map(m=>m[1]);
+            if(!names.length)return true;
+            flowStatus('请先填写模板变量：'+names.join('、')+'。可打开提示词页，在创作台填写。');document.getElementById('promptInput').focus();return false;
+        }
+
         function tr(key){ return window.StudioI18n ? StudioI18n.t(key) : key; }
         function applyLanguage(lang){
             if(lang && window.StudioI18n) StudioI18n.set(lang);
@@ -232,6 +277,7 @@
         let selectedModel = '';
         let modelOptions = [];
         let selectionUnavailable = false;
+        let modelLoadError = '';
         let apiProviders = [];
         let ratio = 'square';
         let resolution = '1k';
@@ -327,17 +373,21 @@
                 const entries = isRunningHubProvider(p.id) ? runningHubEntries(p.id) : providerModels(p.id).map(id => ({id, kind:'model', title:id}));
                 entries.forEach(e => modelOptions.push({provider:p.id, model:e.kind === 'model' ? e.id : `${e.kind}:${e.id}`, label:`${e.title || e.id}${e.kind === 'model' ? '' : e.kind === 'workflow' ? '（工作流）' : '（应用）'} · ${p.name || p.id}`}));
             });
-            if (!provider || (provider === 'local-comfy' && !StudioImageCapabilities.localEnabled())) {
+            if (!provider) {
                 const first = modelOptions.find(o => o.provider !== 'local-comfy') || modelOptions[0];
                 provider = first?.provider || ''; selectedModel = first?.model || '';
                 if (first) localStorage.setItem('studio_image_model', JSON.stringify([provider, selectedModel]));
             }
             const key = JSON.stringify([provider, selectedModel]);
             selectionUnavailable = !modelOptions.some(o => JSON.stringify([o.provider, o.model]) === key);
-            select.innerHTML = (selectionUnavailable ? '<option value="" selected disabled>原模型不可用，请重新选择</option>' : '') + modelOptions.map(o => {
+            select.innerHTML = (selectionUnavailable ? `<option value="" selected disabled>${modelLoadError ? '模型配置加载失败' : modelOptions.length ? '原模型不可用，请重新选择' : '尚未配置可用图像模型'}</option>` : '') + modelOptions.map(o => {
                 const value = JSON.stringify([o.provider, o.model]);
                 return `<option value="${escapeHtml(value)}" ${value === key ? 'selected' : ''}>${escapeHtml(o.label)}</option>`;
             }).join('');
+            if(modelLoadError)flowStatus('模型配置加载失败，请点击重新加载模型。');
+            else if(selectionUnavailable)flowStatus(modelOptions.length?'原模型不可用，请明确选择替代模型。':'还没有可用图像模型，请点击配置图像模型。');
+            else flowStatus('模型已就绪');
+            document.getElementById('genBtn').disabled=selectionUnavailable || !!modelLoadError;
             updateAdaptivePanel();
         }
 
@@ -385,15 +435,15 @@
             if(cs) cs.value = String(outputCount);
         }
         function setQuality(next){ quality = next || 'auto'; }
-        function setCount(next){ outputCount = Math.max(1, Math.min(4, parseInt(next, 10) || 1)); }
+        function setCount(next){ outputCount = Math.max(1, Math.min(8, parseInt(next, 10) || 1)); }
 
         async function initModels(){
             try {
                 const data = await fetch('/api/providers').then(r => { if(!r.ok) throw new Error('模型配置加载失败'); return r.json(); });
-                apiProviders = data.providers || [];
+                apiProviders = data.providers || []; modelLoadError = "";
                 const saved = JSON.parse(localStorage.getItem('studio_image_model') || 'null');
                 if(Array.isArray(saved) && saved.length === 2) [provider, selectedModel] = saved;
-            } catch(e) { console.warn('模型配置加载失败', e); }
+            } catch(e) { modelLoadError = e.message; }
             renderProviderControls();
         }
         // API 设置页保存后会广播 studio-api 事件；这里重新拉取 /api/config，
@@ -401,9 +451,9 @@
         async function refreshProvidersFromApiSettings(){
             try {
                 const data = await fetch('/api/providers').then(r => { if(!r.ok) throw new Error('模型配置加载失败'); return r.json(); });
-                apiProviders = data.providers || [];
+                apiProviders = data.providers || []; modelLoadError = "";
                 renderProviderControls();
-            } catch(e) { console.warn('模型配置刷新失败', e); }
+            } catch(e) { modelLoadError = e.message; flowStatus('模型配置加载失败，请点击重新加载模型。'); }
         }
         let apiSyncTimer = null;
         function scheduleProviderRefresh(){
@@ -420,7 +470,7 @@
         function setModel(next){
             const option = modelOptions.find(o => JSON.stringify([o.provider, o.model]) === next);
             if(!option) return;
-            provider = option.provider; selectedModel = option.model; selectionUnavailable = false;
+            provider = option.provider; selectedModel = option.model; selectionUnavailable = false; document.getElementById('genBtn').disabled=!!modelLoadError; flowStatus('已选择模型：'+selectedModel);
             localStorage.setItem('studio_image_model', next);
             updateAdaptivePanel();
         }
@@ -528,24 +578,25 @@
         }
 
         async function submitImage(){
+            if(!validateVariables())return;
             const prompt = document.getElementById('promptInput').value.trim();
             if(!prompt){ alert(tr('online.promptRequired')); return; }
             if(selectionUnavailable || !providerById(provider)){ alert('请选择可用模型'); return; }
             const btn = document.getElementById('genBtn'), loader = document.getElementById('loader'), placeholder = document.getElementById('placeholder'), out = document.getElementById('outputImg'), dl = document.getElementById('downloadBtn');
             btn.disabled = true; placeholder.classList.add('hidden'); out.classList.add('hidden'); dl.classList.add('hidden'); loader.classList.remove('hidden');
             try {
-                const reqBody = { prompt, provider_id:provider, model:selectedModel, size:currentSize(), n:outputCount, operation:'generate' };
+                const reqBody = { prompt, provider_id:provider, model:selectedModel, size:currentSize(), n:outputCount, operation:'generate', provenance:window.CreationFlow?.provenance?.({...creationContext,prompt,provider,model:selectedModel,size:currentSize(),quality,n:outputCount,references:[]}) };
                 if(QUALITY_PROTOCOLS.has(providerProtocol(provider))) reqBody.quality = quality;
                 const local = provider === 'local-comfy';
                 const dimensions = parseSizeValue(currentSize());
                 if(local && !dimensions) throw new Error('请选择有效的输出尺寸');
-                const body = local ? {prompt, width:Number(dimensions.width), height:Number(dimensions.height), workflow_json:'Z-Image.json', type:'zimage', client_id:localStorage.getItem('client_id') || ''} : reqBody;
+                const body = local ? {prompt, width:Number(dimensions.width), height:Number(dimensions.height), workflow_json:'Z-Image.json', type:'zimage', provenance:reqBody.provenance, client_id:localStorage.getItem('client_id') || ''} : reqBody;
                 const result = await fetch(local ? '/api/generate' : '/api/online-image', {
                     method:'POST', headers:{'Content-Type':'application/json'},
                     body:JSON.stringify(body)
                 }).then(async r => { if(!r.ok) throw new Error((await r.json()).detail || '生成失败'); return r.json(); });
                 if(result.error || !result.images?.length) throw new Error(result.error || '未返回图片');
-                currentResult = result; out.src = result.images[0]; out.classList.remove('hidden'); dl.href = result.images[0]; dl.classList.remove('hidden'); renderImageCard(result, true);
+                result.provenance ||= reqBody.provenance; result.params = {provider_id:reqBody.provider_id,model:reqBody.model,size:reqBody.size,quality:reqBody.quality || 'auto',n:reqBody.n,...(result.params || {})}; currentResult = result; out.src = result.images[0]; out.classList.remove('hidden'); dl.href = result.images[0]; dl.classList.remove('hidden'); renderImageCard(result, true); document.getElementById('currentResultActions').hidden=false;
             } catch(err) {
                 alert(err.message || 'Generation failed'); placeholder.classList.remove('hidden');
             } finally {
@@ -637,23 +688,41 @@
             setTimeout(() => URL.revokeObjectURL(link.href), 1000);
         }
         function zoomImage(){ if(currentResult) openLightbox(currentResult); }
-        function applySameStyle(){
-            if(!currentLightboxData) return;
-            document.getElementById('promptInput').value = currentLightboxData.prompt || '';
-            const size = currentLightboxData.params?.size || '1024x1024';
-            const matchedRatio = Object.keys(SIZE_OPTIONS).find(key => SIZE_OPTIONS[key].some(([value]) => value === size)) || 'square';
-            const matchedRes = SIZE_OPTIONS[matchedRatio]?.find(([value]) => value === size)?.[1];
-            if(matchedRes) {
-                setRatio(matchedRatio, size);
-                setResolution(matchedRes);
-            } else {
-                setResolution('custom');
-                const parsed = parseSizeValue(size);
-                customWidth = parsed?.width || '';
-                customHeight = parsed?.height || '';
-                updateSizeUI();
-            }
-            closeLightbox(); window.scrollTo({top:0, behavior:'smooth'});
+        function retryToolModels(){return refreshProvidersFromApiSettings();}
+        function restoreImageSize(size){
+            const text=String(size ?? '').trim(), parsed=parseSizeValue(text);
+            const ratios={square:[1,1],portrait:[2,3],landscape:[3,2],portrait43:[3,4],landscape43:[4,3],story:[9,16],wide:[16,9]};
+            const aspect=text.match(/^(\d+)\s*:\s*(\d+)$/);
+            const pair=ratios[text] || (parsed?[Number(parsed.width),Number(parsed.height)]:aspect?.slice(1).map(Number));
+            if(!pair || !pair.every(n=>Number.isFinite(n) && n>0))return false;
+            const [width,height]=pair;
+            ratio=Object.entries(ratios).find(([, [w,h]])=>Math.abs(width/height-w/h)<0.000001)?.[0] || 'custom';
+            customRatioWidth=width;customRatioHeight=height;
+            if(parsed && !nativeImageSize()){resolution='custom';customWidth=width;customHeight=height;}
+            else resolution='1k';
+            updateSizeUI();return true;
+        }
+        async function receiveCreation(payload){
+            if(payload.references?.length){await CreationFlow.toEditor(payload);return true;}
+            if(document.getElementById('promptInput').value.trim() && !await CreationFlow.confirmReplace('替换当前文生图草稿？已有提示词将被替换。'))return false;
+            document.getElementById('promptInput').value=payload.prompt || '';
+            creationContext={character:payload.character || null,source:payload.source || null,parentResultId:payload.parentResultId || ''};showCreationContext();
+            provider=payload.provider || '__unrecorded__';selectedModel=payload.model || '';renderProviderControls();
+            const sizeRestored=restoreImageSize(payload.size);quality=payload.quality || 'auto';outputCount=Math.max(1,Math.min(8,Number(payload.n)||1));
+            const count=document.getElementById('countSelect');if(![...count.options].some(o=>Number(o.value)===outputCount))count.add(new Option('×'+outputCount,outputCount));
+            document.getElementById('qualitySelect').value=quality;count.value=String(outputCount);
+            flowStatus(selectionUnavailable?'历史模型不可用或未记录，请选择替代模型。':sizeRestored?'已恢复生成条件，请检查后生成。':'来源未指定有效尺寸，保留当前画幅，请检查后生成。');
+            window.scrollTo({top:0,behavior:'smooth'});return true;
+        }
+        async function pickCreationReference(){
+            try{const picked=await window.CreationFlow?.pickReference();if(!picked)return;
+                await CreationFlow.toEditor({...creationContext,...picked,character:picked.character || picked.provenance?.character || null,source:picked.provenance?.source || null,parentResultId:picked.provenance?.resultId || '',prompt:document.getElementById('promptInput').value,provider,model:selectedModel,size:currentSize(),quality,n:outputCount});
+            }catch(error){flowStatus(error.message);}
+        }
+        async function applySameStyle(){
+            if(!currentLightboxData)return;
+            const record=historyResult(currentLightboxData);
+            if(await receiveCreation(record))closeLightbox();
         }
         async function deleteHistoryItem(ts, ev){
             ev.stopPropagation();
@@ -662,7 +731,7 @@
             if(res.success) document.getElementById(`history-${ts}`)?.remove();
         }
         const observer = new IntersectionObserver(entries => { if(entries[0].isIntersecting && currentIndex < allHistory.length) loadHistory(1); }, {threshold:.1});
-        window.onload = async () => { applyLanguage(); setRatio('square'); setResolution('1k'); await initModels(); await loadHistory(0); window.HistoryBulkManager?.attach({masonry:'#masonry'}); observer.observe(document.getElementById('loadMoreTrigger'));  };
+        window.onload = async () => { applyLanguage(); setRatio('square'); setResolution('1k'); await initModels(); window.CreationFlow?.listen('zimage',receiveCreation); await loadHistory(0); window.HistoryBulkManager?.attach({masonry:'#masonry'}); observer.observe(document.getElementById('loadMoreTrigger'));  };
     </script>
 </body>
 </html>

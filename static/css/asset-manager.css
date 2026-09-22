@@ -581,3 +581,7 @@ body.theme-dark .asset-card.active { border-color:rgba(248,250,252,.86); box-sha
         border-radius:16px 16px 0 0;
     }
 }
+
+.asset-creation-actions { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+
+.asset-creation-source { margin:0 0 8px; color:var(--muted); font-size:12px; line-height:1.6; overflow-wrap:anywhere; }

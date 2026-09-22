@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import prompt_workbench_store
 import prompt_library_order
 import character_library
+from creation_provenance import (sanitize_provenance, generated_provenance, read_provenance, write_provenance, move_provenance, delete_provenance, local_media_source, provenance_path, annotate_local_result)
 import image_collector
 import vision_judge
 import subprocess
@@ -2356,6 +2357,7 @@ def rollback_update(req: RollbackRequest):
     raise HTTPException(status_code=410, detail="本分支已停用上游自动更新，请通过当前项目仓库维护代码。")
 
 class GenerateRequest(BaseModel):
+    provenance: Optional[Dict[str, Any]] = None
     prompt: str = ""
     width: int = 1024
     height: int = 1024
@@ -2394,6 +2396,7 @@ class OnlineImageRequest(BaseModel):
     n: int = 1
     reference_images: List[AIReference] = []
     history_type: str = "online"
+    provenance: Optional[Dict[str, Any]] = None
     operation: str = ""
     resolution_type: str = ""
 
@@ -2676,6 +2679,7 @@ class LocalAssetClassifyRequest(BaseModel):
     prompt: str = ""
 
 class LocalAssetUrlImportItem(BaseModel):
+    provenance: Optional[Dict[str, Any]] = None
     url: str = ""
     name: str = ""
     data: str = ""          # 可选：base64 / dataURL，由插件在网页上下文里读取（blob: 等无法服务端下载的素材）
@@ -2708,6 +2712,7 @@ class AssetLibraryRequest(BaseModel):
     name: str = "资产库"
 
 class AssetLibraryAddRequest(BaseModel):
+    provenance: Optional[Dict[str, Any]] = None
     category_id: str = ""
     url: str = ""
     name: str = ""
@@ -11727,6 +11732,7 @@ def _local_upload_item(filename):
         size = 0
         created_at = 0
     kind, _ = _local_upload_kind_ext(filename, "")
+    provenance = read_provenance(path)
     item = {
         "id": rel,
         "file": rel,
@@ -11737,6 +11743,8 @@ def _local_upload_item(filename):
         "created_at": created_at,
         "folder": os.path.dirname(rel).replace("\\", "/"),
     }
+    if provenance:
+        item["provenance"] = provenance
     if kind == "image":
         try:
             with Image.open(path) as img:
@@ -11938,12 +11946,18 @@ async def import_local_assets_from_urls(payload: LocalAssetUrlImportRequest):
             src_url = str(entry.url or "").strip()
             inline_data = str(entry.data or "").strip()
             result = {"url": src_url, "ok": False, "file": "", "error": ""}
-            if not inline_data and not src_url.startswith(("http://", "https://")):
-                result["error"] = "仅支持 http(s) 素材地址"
+            local_source = local_media_source(src_url, output_file_from_url, [ASSETS_DIR, OUTPUT_OUTPUT_DIR, OUTPUT_DIR, LOCAL_UPLOAD_DIR]) if src_url.startswith("/") else None
+            if not inline_data and not local_source and not src_url.startswith(("http://", "https://")):
+                result["error"] = "仅支持 http(s) 或已有本地媒体地址"
                 results.append(result)
                 continue
             try:
-                if inline_data:
+                if local_source and not inline_data:
+                    with open(local_source, "rb") as stream:
+                        content = stream.read()
+                    content_type = mimetypes.guess_type(local_source)[0] or ""
+                    name_path = local_source
+                elif inline_data:
                     # 插件已在网页上下文里把字节读成 base64（dataURL 形如 data:<ct>;base64,<payload>）
                     content_type = str(entry.content_type or "").split(";", 1)[0].strip().lower()
                     b64 = inline_data
@@ -11991,6 +12005,7 @@ async def import_local_assets_from_urls(payload: LocalAssetUrlImportRequest):
                     classification = await classify_asset_image_best_effort(path, payload.provider, payload.model, payload.ms_model, payload.prompt)
                     if classification:
                         _write_local_upload_classification(rel_name, classification)
+                write_provenance(path, entry.provenance or (read_provenance(local_source) if local_source else None))
                 item = _local_upload_item(rel_name)
                 uploaded.append(item)
                 result.update({"ok": True, "file": rel_name, "item": item})
@@ -12058,7 +12073,10 @@ async def rename_local_asset_item(payload: LocalAssetRenameRequest, request: Req
     _, new_abs = _local_upload_abs(new_rel)
     if os.path.exists(new_abs):
         raise HTTPException(status_code=400, detail="同名素材已存在")
+    if os.path.exists(provenance_path(new_abs)):
+        raise HTTPException(status_code=400, detail="目标来源记录已存在，请换一个名称")
     os.rename(abs_path, new_abs)
+    move_provenance(abs_path, new_abs)
     old_caption = _local_upload_caption_path(rel)
     new_caption = _local_upload_caption_path(new_rel)
     if os.path.isfile(old_caption) and not os.path.exists(new_caption):
@@ -12085,6 +12103,7 @@ async def delete_local_assets(payload: dict, request: Request):
         if os.path.isfile(path):
             try:
                 os.remove(path)
+                delete_provenance(path)
                 txt_path = _local_upload_caption_path(rel)
                 if os.path.isfile(txt_path):
                     os.remove(txt_path)
@@ -12128,7 +12147,10 @@ async def move_local_assets(payload: dict, request: Request):
             _, new_abs = _local_upload_abs(new_rel)
         try:
             os.makedirs(os.path.dirname(new_abs), exist_ok=True)
+            if os.path.exists(provenance_path(new_abs)):
+                continue
             os.rename(abs_path, new_abs)
+            move_provenance(abs_path, new_abs)
             for src_sib, dst_sib in (
                 (_local_upload_caption_path(rel), _local_upload_caption_path(new_rel)),
                 (_local_upload_classification_path(rel), _local_upload_classification_path(new_rel)),
@@ -13691,6 +13713,14 @@ async def build_online_image_result(payload: OnlineImageRequest):
         "params": {"provider_id": provider["id"], "model": model, "size": request_size, "requested_size": payload.size, "quality": payload.quality, "n": count, "reference_images": refs, "operation": operation},
         "raw_usage": raw.get("usage") if isinstance(raw, dict) else None,
     }
+    input_provenance = sanitize_provenance(payload.provenance)
+    result["params"]["provenance"] = input_provenance
+    for index, item in enumerate(local_items):
+        item["provenance"] = generated_provenance(
+            input_provenance, result_id=f"{result['timestamp']}:{index}:{uuid.uuid4().hex}",
+            prompt=payload.prompt, provider=provider["id"], model=model, size=request_size,
+            quality=payload.quality, n=count, references=refs, created_at=result["timestamp"] * 1000, operation=operation)
+    result["provenance"] = local_items[0].get("provenance") if local_items else None
     save_to_history(result)
     if GLOBAL_LOOP:
         asyncio.run_coroutine_threadsafe(manager.broadcast_new_image(result), GLOBAL_LOOP)
@@ -16549,6 +16579,9 @@ async def add_asset_library_item(payload: AssetLibraryAddRequest):
     if not src:
         raise HTTPException(status_code=400, detail="只支持保存本地 /assets 或 /output 媒体")
     _, item = make_asset_library_item(src, payload.name or os.path.basename(src), subdir=cat.get("dir") or "")
+    provenance = sanitize_provenance(payload.provenance)
+    if provenance:
+        item["provenance"] = provenance
     if item.get("kind") == "image":
         classification = await classify_asset_image_best_effort(output_file_from_url(item.get("url") or "") or src)
         if classification:
@@ -16573,6 +16606,9 @@ async def batch_add_asset_library_items(payload: AssetLibraryBatchAddRequest):
         if not src:
             continue
         _, item = make_asset_library_item(src, entry.name or os.path.basename(src), subdir=cat.get("dir") or "")
+        provenance = sanitize_provenance(entry.provenance)
+        if provenance:
+            item["provenance"] = provenance
         if item.get("kind") == "image":
             classification = await classify_asset_image_best_effort(output_file_from_url(item.get("url") or "") or src)
             if classification:
@@ -17737,6 +17773,7 @@ def generate(req: GenerateRequest):
                     "class_type": class_type,
                 }
                 if kind == "image":
+                    entry = {**image_output_meta(local_path, item), **entry}
                     local_images.append(local_path)
                 elif kind == "video":
                     local_videos.append(local_path)
@@ -17784,6 +17821,8 @@ def generate(req: GenerateRequest):
             "backend": target_backend,
             "params": req.params
         }
+        references = [{"url": "/api/view?" + urllib.parse.urlencode({"filename": name, "type": "input"}), "name": name} for name in required_images]
+        annotate_local_result(result, req.provenance, references, req.width, req.height)
         save_to_history(result)
         if GLOBAL_LOOP:
             asyncio.run_coroutine_threadsafe(manager.broadcast_new_image(result), GLOBAL_LOOP)
