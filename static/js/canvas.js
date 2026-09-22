@@ -402,7 +402,6 @@ let models = {gpt:'gpt-image-2', nano:'nano-banana-pro'};
 let imageModels = ['gpt-image-2', 'nano-banana-pro'];
 let chatModels = ['gpt-4o-mini'];
 let videoModels = [];
-let msChatModels = [];
 let apiProviders = [];
 let comfyBackendCount = 1;
 let comfyWorkflows = [];
@@ -411,12 +410,6 @@ let runningHubWorkflowCache = {};
 let managedProviderId = 'comfly';
 let localImageModels = [];
 let localChatModels = [];
-const MS_GEN_MODELS = {
-    zimage:    { label: 'ZImage',     modelId: 'Tongyi-MAI/Z-Image-Turbo',            supportsImage: false, endpoint: '/generate'            },
-    qwen_edit: { label: 'Qwen Edit',  modelId: 'Qwen/Qwen-Image-Edit-2511',            supportsImage: true,  endpoint: '/api/angle/generate'  },
-    klein_edit:{ label: 'Klein',      modelId: 'black-forest-labs/FLUX.2-klein-9B',   supportsImage: true,  endpoint: '/api/ms/generate'     },
-    custom:    { label: '自定义', labelKey: 'canvas.custom', modelId: '',                acceptsImage: true,   endpoint: '/api/ms/generate'     }
-};
 let hasManagedImageModels = false;
 let hasManagedChatModels = false;
 let outputCompareDrag = false;
@@ -698,6 +691,7 @@ function chatApiProviders(){
     return providers.length ? providers : defaultApiProviders();
 }
 function resolveChatProviderId(id){
+    if(id === 'modelscope') return id;
     const providers = chatApiProviders();
     return providers.find(p => p.id === id)?.id || providers[0]?.id || 'comfly';
 }
@@ -710,6 +704,7 @@ function providerChatModels(providerId){
     return uniqueModels(provider?.chat_models || []);
 }
 function resolveImageProviderId(id){
+    if(id === 'modelscope') return id;
     const providers = imageApiProviders();
     return providers.find(p => p.id === id)?.id || providers[0]?.id || '';
 }
@@ -725,6 +720,7 @@ function providerImageModels(providerId){
     return uniqueModels(provider?.image_models || []);
 }
 function sanitizeImageNodeProviderModel(node){
+    if(node?.apiProvider === 'modelscope') return;
     if(!node || node.type !== 'generator') return;
     node.apiProvider = resolveImageProviderId(node.apiProvider || '');
     const models = providerImageModels(node.apiProvider);
@@ -767,39 +763,6 @@ function videoModelOptions(selectedModel, providerId){
 function allImageModels(providerId){
     const providerModels = providerImageModels(providerId || managedProviderId);
     return uniqueModels(providerModels);
-}
-function modelscopeImageModels(selected = ''){
-    const provider = (apiProviders.length ? apiProviders : []).find(p => p.id === 'modelscope');
-    return uniqueModels([
-        selected,
-        ...((provider?.image_models || []).length ? provider.image_models : []),
-        'Tongyi-MAI/Z-Image-Turbo',
-        'black-forest-labs/FLUX.2-klein-9B'
-    ]);
-}
-function modelscopeImageModelOptions(selectedModel){
-    const selectedValue = selectedModel || modelscopeImageModels()[0] || 'Tongyi-MAI/Z-Image-Turbo';
-    return modelscopeImageModels(selectedValue).map(model => `<option value="${escapeHtml(model)}" ${model === selectedValue ? 'selected' : ''}>${escapeHtml(model)}</option>`).join('');
-}
-function currentMsModelId(modelKey, node){
-    if(modelKey === 'custom') return node.msCustomModel || modelscopeImageModels()[0] || 'Tongyi-MAI/Z-Image-Turbo';
-    return (MS_GEN_MODELS[modelKey] || MS_GEN_MODELS.zimage).modelId;
-}
-function modelscopeLorasForModel(modelId){
-    const provider = (apiProviders.length ? apiProviders : []).find(p => p.id === 'modelscope');
-    const list = Array.isArray(provider?.ms_loras) ? provider.ms_loras : [];
-    return list.filter(lora =>
-        lora && lora.enabled !== false &&
-        String(lora.id || '').trim() &&
-        String(lora.target_model || lora.model || '').trim() === String(modelId || '').trim()
-    );
-}
-function modelscopeLoraOptions(loras, selectedId){
-    return loras.map(lora => {
-        const id = String(lora.id || '').trim();
-        const label = String(lora.name || id).trim();
-        return `<option value="${escapeHtml(id)}" ${id === selectedId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-    }).join('');
 }
 function allChatModels(){
     const providerModels = chatApiProviders().flatMap(p => p.chat_models || []);
@@ -1446,6 +1409,8 @@ function serializableCanvasNode(node){
     delete copy._cascadeIdx;
     delete copy._cascadeFailed;
     delete copy._activeLoopCtx;
+    delete copy._visionSources;
+    delete copy._visionRun;
     return copy;
 }
 function serializableCanvasNodes(list=nodes){
@@ -1519,7 +1484,6 @@ async function loadConfig(){
         imageModels = cfg.image_models?.length ? cfg.image_models : imageModels;
         chatModels = cfg.chat_models?.length ? cfg.chat_models : chatModels;
         videoModels = cfg.video_models?.length ? cfg.video_models : DEFAULT_VIDEO_MODELS;
-        msChatModels = cfg.ms_chat_models?.length ? cfg.ms_chat_models : msChatModels;
         comfyBackendCount = Math.max(1, (cfg.comfy_instances || []).length || 1);
         apiProviders = Array.isArray(cfg.api_providers) && cfg.api_providers.length ? cfg.api_providers : defaultApiProviders();
         models.nano = imageModels.find(m => m.toLowerCase().includes('nano')) || 'nano-banana-pro';
@@ -1550,16 +1514,6 @@ try {
         }
     };
 } catch(e) { /* 不支持 BroadcastChannel 的旧浏览器忽略 */ }
-function msChatModelOptions(selected){
-    // 单一数据源：从 API 设置里 modelscope 平台的 chat_models 取
-    const msProvider = apiProviders.find(p => p.id === 'modelscope');
-    const list = uniqueModels(msProvider?.chat_models || []);
-    if(!list.length){
-        return `<option value="" disabled selected>${tr('canvas.noModelsHint') || '暂无模型，请到 API 设置添加'}</option>`;
-    }
-    const sel = selected && list.includes(selected) ? selected : list[0];
-    return list.map(m => `<option value="${escapeHtml(m)}" ${m === sel ? 'selected' : ''}>${escapeHtml(m.split('/').pop().split(':')[0])}</option>`).join('');
-}
 async function loadCanvasList(openFirst=true){
     try {
         const res = await fetch('/api/canvases');
@@ -2575,31 +2529,6 @@ function addMidjourneyNode(point){
         inputs:[], running:false, lastTaskId:'', lastAction:'', lastTaskStatus:'', lastImageCount:0, lastPrompt:'', mjModalTaskId:'', mjModalPrompt:''
     });
 }
-function addMsGenNode(point){
-    const p = point || defaultPoint(140, 0);
-    return addNode({
-        id:uid('msgen'),
-        type:'msgen',
-        x:p.x,
-        y:p.y,
-        msgenModel:'zimage',
-        msWidth:1024,
-        msHeight:1024,
-        msCustomModel:modelscopeImageModels()[0] || 'Tongyi-MAI/Z-Image-Turbo',
-        msRatio:'square',
-        msResolution:'1k',
-        msCustomRatio:'',
-        msCustomSize:'',
-        msCustomRatioWidth:'',
-        msCustomRatioHeight:'',
-        msCustomWidth:'',
-        msCustomHeight:'',
-        count:1,
-        fitImage:false,
-        inputs:[],
-        running:false
-    });
-}
 function addVideoNode(point){
     const p = point || defaultPoint(160, 0);
     const providerId = videoApiProviders()[0]?.id || 'comfly';
@@ -2627,6 +2556,7 @@ function addVideoNode(point){
     });
 }
 function addMiniMaxNode(point){
+    if (!StudioImageCapabilities.localEnabled()) return;
     const p = point || defaultPoint(170, 0);
     return addNode({
         id:uid('mmx'),
@@ -2736,444 +2666,25 @@ async function urlToBase64(url){
 function renderMsGenBody(node){
     const wrap = document.createElement('div');
     wrap.className = 'generator-body';
-    const modelKey = node.msgenModel || 'zimage';
-    const msModel = MS_GEN_MODELS[modelKey] || MS_GEN_MODELS.zimage;
-    const inputSources = generatorSources(node);
-    const ordered = orderedSources(node, inputSources);
-    const mediaInputs = ordered.filter(src => src.refs?.some(ref => ['image','video','audio'].includes(mediaKindForRef(ref))));
-    const promptInputs = ordered.filter(src => src.prompt && !src.refs?.length);
-    const referenceImages = ordered.flatMap(src => src.refs || []);
-    const isCustomMs = modelKey === 'custom';
-    const msUsesImages = Boolean(msModel.supportsImage || msModel.acceptsImage);
-    node.msCustomModel = node.msCustomModel || modelscopeImageModels()[0] || 'Tongyi-MAI/Z-Image-Turbo';
-    const msModelId = currentMsModelId(modelKey, node);
-    const msLoras = modelscopeLorasForModel(msModelId);
-    const selectedMsLora = msLoras.find(lora => String(lora.id || '').trim() === String(node.msLoraId || '').trim()) || msLoras[0];
-    const loraEnabled = Boolean(node.msLoraEnabled);
-    const loraStrength = node.msLoraStrength ?? Number(selectedMsLora?.strength ?? 0.8);
-    const msCount = Math.max(1, Math.min(8, Number(node.count || 1)));
-    wrap.innerHTML = `
-        <div class="ms-model-tabs">
-            ${Object.entries(MS_GEN_MODELS).map(([k,m]) =>
-                `<button type="button" data-model="${k}" class="${modelKey===k?'active':''}">${escapeHtml(m.labelKey ? tr(m.labelKey) : m.label)}</button>`
-            ).join('')}
-        </div>
-        <div class="ms-content">
-            <div class="prompt-list mt-2 mb-2"></div>
-            ${msUsesImages ? `
-            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">${tr('canvas.images')}</div>
-            <div class="input-list ms-img-list"></div>
-            ` : ''}
-        </div>
-        <div class="ms-controls">
-            <div class="gen-settings">
-                ${isCustomMs ? `
-                <div class="gen-settings-row">
-                    <select class="select-lite ms-custom-model-select">${modelscopeImageModelOptions(node.msCustomModel)}</select>
-                </div>
-                ` : ''}
-                <div class="gen-settings-row">
-                    <select class="select-lite resolution compact-select" data-field="msResolution">
-                        <option value="1k">1K</option>
-                        <option value="2k">2K</option>
-                        <option value="4k">4K</option>
-                    <option value="custom">${tr('canvas.custom')}</option>
-                </select>
-                <select class="select-lite ratio compact-select" data-field="msRatio">
-                    <option value="square">1:1</option>
-                    <option value="portrait">2:3</option>
-                    <option value="landscape">3:2</option>
-                        <option value="portrait43">3:4</option>
-                        <option value="landscape43">4:3</option>
-                        <option value="story">9:16</option>
-                        <option value="wide">16:9</option>
-                        <option value="ultrawide">21:9</option>
-                        <option value="ultratall">9:21</option>
-                        <option value="custom">${tr('canvas.custom')}</option>
-                    </select>
-                    <div class="gen-count-row">
-                        <div class="gen-stepper">
-                            <button class="gen-step-btn" data-ms-step="-1" type="button" title="${tr('canvas.decrease')}" aria-label="${tr('canvas.decreaseCount')}"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
-                            <input class="gen-count-input ms-count-input" type="text" inputmode="numeric" pattern="[0-9]*" value="${msCount}">
-                            <button class="gen-step-btn" data-ms-step="1" type="button" title="${tr('canvas.increase')}" aria-label="${tr('canvas.increaseCount')}"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
-                        </div>
-                    </div>
-                </div>
-                <div class="gen-settings-row ms-custom-ratio-row" style="display:none">
-                    <label class="field">
-                        <div class="setting-title">${tr('canvas.ratioWidth')}</div>
-                        <input class="setting-input ms-custom-ratio-w-input" type="number" min="1" step="1" value="${escapeHtml(node.msCustomRatioWidth || '')}" placeholder="4">
-                    </label>
-                    <label class="field">
-                        <div class="setting-title">${tr('canvas.ratioHeight')}</div>
-                        <input class="setting-input ms-custom-ratio-h-input" type="number" min="1" step="1" value="${escapeHtml(node.msCustomRatioHeight || '')}" placeholder="3">
-                    </label>
-                </div>
-                <div class="gen-settings-row ms-custom-size-row" style="display:none">
-                    <label class="field">
-                        <div class="setting-title">${tr('canvas.width')}</div>
-                        <input class="setting-input ms-custom-w-input" type="number" min="64" step="64" value="${escapeHtml(node.msCustomWidth || '')}" placeholder="Auto">
-                    </label>
-                    <label class="field">
-                        <div class="setting-title">${tr('canvas.height')}</div>
-                        <input class="setting-input ms-custom-h-input" type="number" min="64" step="64" value="${escapeHtml(node.msCustomHeight || '')}" placeholder="Auto">
-                    </label>
-                    <button class="secondary-btn ms-fit-size-btn" type="button" style="height:32px;align-self:flex-end;padding:0 10px;font-size:11px">${tr('canvas.fitImageSize')}</button>
-                </div>
-                ${msLoras.length ? `
-                <div class="gen-settings-row">
-                    <label class="setting-check" style="cursor:pointer">
-                        <input type="checkbox" class="ms-lora-check" ${node.msLoraEnabled ? 'checked' : ''}>
-                        <span style="font-size:11px;font-weight:700">${tr('canvas.enableLora')}</span>
-                    </label>
-                </div>
-                ${node.msLoraEnabled ? `
-                <div class="gen-settings-row">
-                    <label class="field" style="flex:1">
-                        <div class="setting-title">LoRA</div>
-                        <select class="select-lite ms-lora-select">${modelscopeLoraOptions(msLoras, String(selectedMsLora?.id || '').trim())}</select>
-                    </label>
-                </div>
-                <div class="gen-settings-row">
-                    <label class="field" style="flex:1">
-                        <div class="setting-title" style="display:flex;justify-content:space-between">
-                            <span>${tr('canvas.loraStrength')}</span><span class="ms-lora-strength-val">${loraStrength.toFixed(2)}</span>
-                        </div>
-                        <input type="range" class="canvas-range ms-lora-strength-slider" min="0.1" max="1.0" step="0.05" value="${loraStrength}">
-                    </label>
-                </div>` : ''}` : ''}
-                ${!msLoras.length ? `<div class="gen-settings-row"><div style="color:var(--faint);font-size:11px;font-weight:700;line-height:1.45">${tr('canvas.noLoraForModel')}</div></div>` : ''}
-            </div>
-            <div class="gen-run-row">
-                <button class="gen-btn ${node.running?'running':''}" ${node.running?'disabled':''}>
-                    <i data-lucide="zap" class="w-4 h-4"></i>${node.running ? tr('canvas.generating') : tr('canvas.msGenerate')}
-                </button>
-                ${cascadeBtnHtml(node)}
-            </div>
-            ${retryBarHtml(node)}
-        </div>
-    `;
-    wrap.querySelectorAll('.ms-model-tabs button').forEach(btn => {
-        btn.onclick = e => {
-            e.stopPropagation();
-            if(node.msgenModel !== btn.dataset.model){
-                node.msLoraId = '';
-                delete node.msLoraStrength;
-                node.msLoraEnabled = false;
-            }
-            node.msgenModel = btn.dataset.model;
-            render();
-            scheduleSave();
-        };
-    });
-    const msCustomModelSelect = wrap.querySelector('.ms-custom-model-select');
-    if(msCustomModelSelect){
-        msCustomModelSelect.onmousedown = e => e.stopPropagation();
-        msCustomModelSelect.onclick = e => e.stopPropagation();
-        msCustomModelSelect.onchange = e => {
-            e.stopPropagation();
-            node.msCustomModel = e.target.value;
-            node.msLoraId = '';
-            delete node.msLoraStrength;
-            node.msLoraEnabled = false;
-            scheduleSave();
-            render();
-        };
-    }
-    const msRatioSelect = wrap.querySelector('[data-field="msRatio"]');
-    const msResolutionSelect = wrap.querySelector('[data-field="msResolution"]');
-    if(msRatioSelect && msResolutionSelect){
-        const msCustomRatioRow = wrap.querySelector('.ms-custom-ratio-row');
-        const msCustomSizeRow = wrap.querySelector('.ms-custom-size-row');
-        const msCustomRatioWInput = wrap.querySelector('.ms-custom-ratio-w-input');
-        const msCustomRatioHInput = wrap.querySelector('.ms-custom-ratio-h-input');
-        const msCustomWInput = wrap.querySelector('.ms-custom-w-input');
-        const msCustomHInput = wrap.querySelector('.ms-custom-h-input');
-        const msFitSizeBtn = wrap.querySelector('.ms-fit-size-btn');
-        if((!node.msCustomRatioWidth || !node.msCustomRatioHeight) && node.msCustomRatio) {
-            const raw = String(node.msCustomRatio || '');
-            if(raw.includes(':')){
-                const [w,h] = raw.split(':');
-                node.msCustomRatioWidth = node.msCustomRatioWidth || w;
-                node.msCustomRatioHeight = node.msCustomRatioHeight || h;
-            }
-        }
-        if((!node.msCustomWidth || !node.msCustomHeight) && node.msCustomSize) {
-            const parsed = parseSizeValue(node.msCustomSize);
-            node.msCustomWidth = node.msCustomWidth || parsed?.width || '';
-            node.msCustomHeight = node.msCustomHeight || parsed?.height || '';
-        }
-        const syncMsCustomSizeControls = () => {
-            const ratioValue = node.msRatio && [...msRatioSelect.options].some(opt => opt.value === node.msRatio) ? node.msRatio : 'square';
-            msRatioSelect.value = ratioValue;
-            msResolutionSelect.value = node.msResolution || '1k';
-            msRatioSelect.disabled = node.msResolution === 'custom';
-            msCustomRatioRow.style.display = node.msRatio === 'custom' ? 'flex' : 'none';
-            msCustomSizeRow.style.display = node.msResolution === 'custom' ? 'flex' : 'none';
-            msCustomRatioWInput.value = node.msCustomRatioWidth || '';
-            msCustomRatioHInput.value = node.msCustomRatioHeight || '';
-            msCustomWInput.value = node.msCustomWidth || '';
-            msCustomHInput.value = node.msCustomHeight || '';
-            if(msFitSizeBtn) msFitSizeBtn.disabled = !referenceImages.some(ref => ref.url);
-        };
-        msRatioSelect.onmousedown = e => e.stopPropagation();
-        msRatioSelect.onclick = e => e.stopPropagation();
-        msRatioSelect.onchange = e => {
-            e.stopPropagation();
-            node.msRatio = e.target.value;
-            if(node.msRatio !== 'custom') {
-                node.msCustomRatio = '';
-                node.msCustomRatioWidth = '';
-                node.msCustomRatioHeight = '';
-            }
-            syncMsCustomSizeControls();
-            scheduleSave();
-        };
-        msResolutionSelect.onmousedown = e => e.stopPropagation();
-        msResolutionSelect.onclick = e => e.stopPropagation();
-        msResolutionSelect.onchange = e => {
-            e.stopPropagation();
-            node.msResolution = e.target.value;
-            if(node.msResolution === 'custom') {
-                node.msRatio = '';
-            } else if(!node.msRatio) {
-                node.msRatio = 'square';
-                node.msCustomSize = '';
-                node.msCustomWidth = '';
-                node.msCustomHeight = '';
-            } else {
-                node.msCustomSize = '';
-                node.msCustomWidth = '';
-                node.msCustomHeight = '';
-            }
-            syncMsCustomSizeControls();
-            scheduleSave();
-        };
-        [msCustomRatioWInput, msCustomRatioHInput].forEach(input => {
-            input.onmousedown = e => e.stopPropagation();
-            input.onclick = e => e.stopPropagation();
-            input.oninput = () => {
-                node.msCustomRatioWidth = msCustomRatioWInput.value;
-                node.msCustomRatioHeight = msCustomRatioHInput.value;
-                node.msCustomRatio = node.msCustomRatioWidth && node.msCustomRatioHeight ? `${node.msCustomRatioWidth}:${node.msCustomRatioHeight}` : '';
-                node.msRatio = 'custom';
-                syncMsCustomSizeControls();
-                scheduleSave();
-            };
-        });
-        [msCustomWInput, msCustomHInput].forEach(input => {
-            input.onmousedown = e => e.stopPropagation();
-            input.onclick = e => e.stopPropagation();
-            input.oninput = () => {
-                node.msCustomWidth = msCustomWInput.value;
-                node.msCustomHeight = msCustomHInput.value;
-                node.msCustomSize = node.msCustomWidth && node.msCustomHeight ? `${node.msCustomWidth}x${node.msCustomHeight}` : '';
-                node.msResolution = 'custom';
-                node.msRatio = '';
-                syncMsCustomSizeControls();
-                scheduleSave();
-            };
-        });
-        if(msFitSizeBtn){
-            msFitSizeBtn.onmousedown = e => e.stopPropagation();
-            msFitSizeBtn.onclick = async e => {
-                e.stopPropagation();
-                const ref = referenceImages.find(item => item.url);
-                if(!ref) return;
-                try {
-                    const dims = await getImageDimensions(ref.url);
-                    node.msCustomWidth = dims.width;
-                    node.msCustomHeight = dims.height;
-                    node.msCustomSize = `${dims.width}x${dims.height}`;
-                    node.msResolution = 'custom';
-                    node.msRatio = '';
-                    syncMsCustomSizeControls();
-                    scheduleSave();
-                } catch(err) {
-                    showErrorModal(tr('canvas.imageReadFailed'));
-                }
-            };
-        }
-        syncMsCustomSizeControls();
-    }
-    const msCountInput = wrap.querySelector('.ms-count-input');
-    if(msCountInput){
-        msCountInput.onmousedown = e => e.stopPropagation();
-        msCountInput.onclick = e => e.stopPropagation();
-        msCountInput.oninput = e => {
-            node.count = Math.max(1, Math.min(8, Number(e.target.value) || 1));
-            scheduleSave();
-        };
-        msCountInput.onblur = e => { e.target.value = String(Math.max(1, Math.min(8, Number(node.count || 1)))); };
-        wrap.querySelectorAll('[data-ms-step]').forEach(btn => {
-            btn.onclick = e => {
-                e.stopPropagation();
-                const next = Math.max(1, Math.min(8, Number(node.count || 1) + Number(btn.dataset.msStep || 0)));
-                node.count = next;
-                msCountInput.value = String(next);
-                scheduleSave();
-            };
-        });
-    }
-    const msLoraCheck = wrap.querySelector('.ms-lora-check');
-    if(msLoraCheck){
-        msLoraCheck.onchange = e => {
-            node.msLoraEnabled = e.target.checked;
-            if(node.msLoraEnabled && !node.msLoraId && msLoras[0]){
-                node.msLoraId = String(msLoras[0].id || '').trim();
-                node.msLoraStrength = Number(msLoras[0].strength ?? 0.8);
-            }
-            scheduleSave();
-            render();
-        };
-    }
-    const msLoraSelect = wrap.querySelector('.ms-lora-select');
-    if(msLoraSelect){
-        msLoraSelect.onmousedown = e => e.stopPropagation();
-        msLoraSelect.onclick = e => e.stopPropagation();
-        msLoraSelect.onchange = e => {
-            node.msLoraId = e.target.value;
-            const picked = msLoras.find(lora => String(lora.id || '').trim() === node.msLoraId);
-            node.msLoraStrength = Number(picked?.strength ?? node.msLoraStrength ?? 0.8);
-            scheduleSave();
-            render();
-        };
-    }
-    const msLoraSlider = wrap.querySelector('.ms-lora-strength-slider');
-    if(msLoraSlider){
-        msLoraSlider.onmousedown = e => e.stopPropagation();
-        msLoraSlider.onclick = e => e.stopPropagation();
-        msLoraSlider.oninput = e => {
-            node.msLoraStrength = parseFloat(e.target.value);
-            const val = wrap.querySelector('.ms-lora-strength-val');
-            if(val) val.textContent = node.msLoraStrength.toFixed(2);
-            scheduleSave();
-        };
-    }
-    // Make entire setting-check pill clickable (not just the checkbox square)
-    wrap.querySelectorAll('.setting-check').forEach(pill => {
-        pill.onmousedown = e => e.stopPropagation();
-        const cb = pill.querySelector('input[type="checkbox"]');
-        if(!cb) return;
-        pill.onclick = e => {
-            e.stopPropagation();
-            e.preventDefault(); // prevent native label activation; we handle it
-            cb.checked = !cb.checked;
-            cb.dispatchEvent(new Event('change'));
-        };
-        cb.onclick = e => e.stopPropagation(); // prevent bubble → pill.onclick
-    });
-    if(msUsesImages){
-        const list = wrap.querySelector('.ms-img-list');
-        renderImageInputList(list, node, mediaInputs);
-    }
-    renderPromptPreview(wrap.querySelector('.prompt-list'), promptInputs);
-    wrap.querySelector('.gen-btn').onclick = e => { e.stopPropagation(); runCanvasGenerate(node.id); };
-    bindCascadeButtons(wrap, node.id);
+    const message = document.createElement('p');
+    message.textContent = 'ModelScope 服务已移除。原有图片、参数和连线已保留；请手动新建其他生成节点。';
+    const details = document.createElement('div');
+    details.onmousedown = event => event.stopPropagation();
+    details.onclick = event => event.stopPropagation();
+    const summary = document.createElement('div'); summary.textContent = '原参数';
+    const pre = document.createElement('pre'); pre.style.whiteSpace = 'pre-wrap';
+    pre.style.maxHeight = '180px'; pre.style.overflow = 'auto';
+    pre.textContent = JSON.stringify(Object.fromEntries(Object.entries(node).filter(([key]) => !key.startsWith('_'))), null, 2);
+    details.append(summary, pre); wrap.append(message, details);
     return wrap;
 }
 async function runMsGenNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
-    if(!node || (node.running && !opts.cascade)) return;
-    const cascadeTargetId = cascadeTargetIdFromOptions(opts);
-    const sources = orderedSources(node, generatorSources(node));
-    const prompt = sources.map(s => s.prompt).filter(Boolean).join('\n\n');
-    const refs = imageRefsOnly(sources.flatMap(s => s.refs || []));
-    const modelKey = node.msgenModel || 'zimage';
-    const msModel = MS_GEN_MODELS[modelKey] || MS_GEN_MODELS.zimage;
-    const msModelId = currentMsModelId(modelKey, node);
-    const msLoras = modelscopeLorasForModel(msModelId);
-    if(!prompt){ alert(tr('canvas.needPrompt')); return; }
-    if(msModel.supportsImage && !refs.length){ alert(tr('canvas.needImage')); return; }
-    const count = Math.max(1, Math.min(8, Number(node.count || 1)));
-    // 链路中间节点默认不创建 Output；链尾、手动开启或已有 Output 连接时才输出。
-    let out = outputForNode(node, 460);
-    const pendingIds = Array.from({length:count}, () => uid('p'));
-    const run = runSnapshot(node, prompt, refs);
-    const size = apiImageSize(node.msRatio ?? 'square', node.msResolution || '1k', node.msCustomRatio || '', node.msCustomSize || '');
-    const parsed = parseSizeValue(size);
-    let width = Number(parsed?.width) || 1024;
-    let height = Number(parsed?.height) || 1024;
-    if(!parsed && node.msWidth && node.msHeight){
-        width = Number(node.msWidth) || width;
-        height = Number(node.msHeight) || height;
-    }
-    const requestSize = {width, height};
-    if(out) out._pending = [...(out._pending || []), ...pendingIds.map(id => makePendingForRun(id, run, node, {refs, requestSize, cascadeTargetId}))];
-    if(!opts.cascade){
-        node.running = true;
-        refreshRunNodes(node, out);
-        setTimeout(() => { node.running = false; refreshRunNodes(node, out); }, 2000);
-    }
-    else refreshRunNodes(node, out);
-    try {
-        const imageUrls = [];
-        if(msModel.supportsImage || msModel.acceptsImage){
-            for(const ref of refs.slice(0, CANVAS_REFERENCE_IMAGE_MAX)){
-                if(ref.url){
-                    try { imageUrls.push(await urlToBase64(ref.url)); }
-                    catch(e){ imageUrls.push(ref.url); }
-                }
-            }
-        }
-        const submitMs = async () => {
-            let apiBody;
-            if(modelKey === 'zimage'){
-                apiBody = { prompt, resolution: `${width}x${height}`, client_id: CLIENT_ID };
-            } else if(modelKey === 'qwen_edit'){
-                apiBody = { prompt, image_urls: imageUrls, resolution: `${width}x${height}`, client_id: CLIENT_ID };
-            } else if(modelKey === 'custom'){
-                apiBody = {
-                    prompt,
-                    model: node.msCustomModel || modelscopeImageModels()[0] || 'Tongyi-MAI/Z-Image-Turbo',
-                    image_urls: imageUrls,
-                    width,
-                    height,
-                    size: `${width}x${height}`,
-                    client_id: CLIENT_ID
-                };
-            } else {
-                apiBody = { prompt, model: msModel.modelId, image_urls: imageUrls, width, height, size:`${width}x${height}`, client_id: CLIENT_ID };
-            }
-            if(node.msLoraEnabled){
-                const selected = msLoras.find(lora => String(lora.id || '').trim() === String(node.msLoraId || '').trim()) || msLoras[0];
-                const loraId = String(selected?.id || node.msLoraId || '').trim();
-                if(!loraId) throw new Error(tr('canvas.noLoraBoundError'));
-                apiBody.loras = { [loraId]: Number(node.msLoraStrength ?? selected?.strength ?? 0.8) };
-            }
-            const res = await cascadeFetch(msModel.endpoint, {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify(apiBody)
-            }, {cascadeTargetId});
-            if(!res.ok) throw new Error(await responseErrorMessage(res, tr('canvas.msFailed')));
-            return await res.json();
-        };
-        const results = await Promise.all(Array.from({length:count}, submitMs));
-        const metas = collectRunMetas(out, pendingIds);
-        const outputUrls = results.map(data => data.url).filter(Boolean);
-        run.request = results[0] ? requestMetaFromResult(results[0]) : {};
-        if(out) out._pending = (out._pending || []).filter(p => !pendingIds.includes(p.id));
-        appendOutputImages(out, outputUrls, refs[0], metas);
-        mergeGeneratedOutputs(node, outputUrls, Boolean(opts.cascade));
-        addGenerationLog({run, outputs:outputUrls, runMs:Math.max(...metas.map(m => m.runMs || 0), 0)});
-        node.runStatus = 'done'; node.runError = '';
-        refreshRunNodes(node, out);
-        scheduleSave();
-    } catch(err){
-        const metas = collectRunMetas(out, pendingIds);
-        addGenerationLog({run, outputs:[], runMs:Math.max(...metas.map(m => m.runMs || 0), 0), error:err.message || String(err)});
-        if(out) out._pending = (out._pending || []).filter(p => !pendingIds.includes(p.id));
-        if(isCascadeAbortError(err)){
-            if(opts.cascade) throw err;
-            return;
-        }
-        node.runStatus = 'failed'; node.runError = err.message || String(err);
-        refreshRunNodes(node, out);
-        if(opts.cascade) throw err;
-        alert(err.message || tr('canvas.msFailed'));
-    }
+    const error = new Error('ModelScope 服务已移除，请手动选择其他生成节点。');
+    if(opts.cascade) throw error;
+    alert(error.message);
 }
 function addComfyNode(point){
+    if (!StudioImageCapabilities.localEnabled()) return;
     const p = point || defaultPoint(160, 0);
     return addNode({
         id:uid('comfy'),
@@ -3230,10 +2741,9 @@ function linkCreateOptions(state){
             return [
                 {type:'generator', label:tr('canvas.apiGenerate'), icon:'wand-sparkles'},
                 {type:'midjourney', label:'Midjourney', icon:'panel-top'},
-                {type:'msgen', label:tr('canvas.modelscopeGenerate'), icon:'cloud-lightning'},
-                {type:'comfy', label:tr('canvas.comfyGenerate'), icon:'workflow'},
+                ...(StudioImageCapabilities.localEnabled() ? [{type:'comfy', label:tr('canvas.comfyGenerate'), icon:'workflow'}] : []),
                 {type:'rh', label:tr('canvas.rhGenerate'), icon:'workflow'},
-                {type:'minimax', label:'MiniMax H3', icon:'sparkles'},
+                ...(StudioImageCapabilities.localEnabled() ? [{type:'minimax', label:'MiniMax H3', icon:'sparkles'}] : []),
                 {type:'ltxDirector', label:tr('canvas.ltxDirector'), icon:'film'},
                 {type:'video', label:tr('canvas.videoGenerateNode'), icon:'clapperboard'},
                 ...(node.type === 'output' ? [] : [{type:'llm', label:'LLM', icon:'message-square-text'}])
@@ -3283,9 +2793,8 @@ function openGeneratorNodeMenu(nodeId, clientX, clientY){
         ...(CANVAS_IMAGE_OUTPUT_TYPES.includes(node.type) ? [
             {type:'generator', label:tr('canvas.apiGenerate'), icon:'wand-sparkles'},
             {type:'midjourney', label:'Midjourney', icon:'panel-top'},
-            {type:'msgen', label:tr('canvas.modelscopeGenerate'), icon:'cloud-lightning'},
-            {type:'comfy', label:tr('canvas.comfyGenerate'), icon:'workflow'},
-            {type:'minimax', label:'MiniMax H3', icon:'sparkles'},
+            ...(StudioImageCapabilities.localEnabled() ? [{type:'comfy', label:tr('canvas.comfyGenerate'), icon:'workflow'}] : []),
+            ...(StudioImageCapabilities.localEnabled() ? [{type:'minimax', label:'MiniMax H3', icon:'sparkles'}] : []),
             {type:'ltxDirector', label:tr('canvas.ltxDirector'), icon:'film'},
             {type:'video', label:tr('canvas.videoGenerateNode'), icon:'clapperboard'}
         ] : [])
@@ -3603,12 +3112,12 @@ function createLinkedNode(type){
 function createNodeByType(type, point){
     if(type === 'image') return addImageNode(point);
     if(type === 'prompt') return addPromptNode(point);
+    if(type === 'visionJudge') return addVisionJudgeNode(point);
     if(type === 'loop') return addLoopNode(point);
     if(type === 'group') return addGroupNode(point);
     if(type === 'llm') return addLLMNode(point);
     if(type === 'generator') return addGeneratorNode(point);
     if(type === 'midjourney') return addMidjourneyNode(point);
-    if(type === 'msgen') return addMsGenNode(point);
     if(type === 'video') return addVideoNode(point);
     if(type === 'minimax') return addMiniMaxNode(point);
     if(type === 'rh') return addRhNode(point);
@@ -3621,11 +3130,11 @@ function menuAdd(type){
     closeCreateMenu();
     if(type === 'image') addImageNode(menuPoint);
     if(type === 'prompt') addPromptNode(menuPoint);
+    if(type === 'visionJudge') addVisionJudgeNode(menuPoint);
     if(type === 'loop') addLoopNode(menuPoint);
     if(type === 'llm') addLLMNode(menuPoint);
     if(type === 'generator') addGeneratorNode(menuPoint);
     if(type === 'midjourney') addMidjourneyNode(menuPoint);
-    if(type === 'msgen') addMsGenNode(menuPoint);
     if(type === 'video') addVideoNode(menuPoint);
     if(type === 'minimax') addMiniMaxNode(menuPoint);
     if(type === 'rh') addRhNode(menuPoint);
@@ -6151,7 +5660,7 @@ function renderNode(node){
         if(node.type === 'output') openOutputNodeMenu(node.id, e.clientX, e.clientY);
         else openGeneratorNodeMenu(node.id, e.clientX, e.clientY);
     };
-    const title = node.type === 'image' ? 'Image' : node.type === 'prompt' ? 'Prompt' : node.type === 'loop' ? tr('canvas.loopNode') : node.type === 'promptGroup' ? 'Prompts' : node.type === 'group' ? 'Group' : node.type === 'output' ? 'Output' : node.type === 'llm' ? 'LLM' : node.type === 'comfy' ? 'ComfyUI' : node.type === 'ltxDirector' ? tr('canvas.ltxDirector') : node.type === 'rh' ? 'RunningHub' : node.type === 'minimax' ? 'MiniMax H3' : node.type === 'midjourney' ? 'Midjourney' : node.type === 'msgen' ? tr('canvas.modelscopeGenerate') : node.type === 'video' ? tr('canvas.videoGenerateNode') : tr('canvas.apiGenerate');
+    const title = node.type === 'visionJudge' ? '视觉判断' : node.type === 'image' ? 'Image' : node.type === 'prompt' ? 'Prompt' : node.type === 'loop' ? tr('canvas.loopNode') : node.type === 'promptGroup' ? 'Prompts' : node.type === 'group' ? 'Group' : node.type === 'output' ? 'Output' : node.type === 'llm' ? 'LLM' : node.type === 'comfy' ? 'ComfyUI' : node.type === 'ltxDirector' ? tr('canvas.ltxDirector') : node.type === 'rh' ? 'RunningHub' : node.type === 'minimax' ? 'MiniMax H3' : node.type === 'midjourney' ? 'Midjourney' : node.type === 'msgen' ? '服务已移除' : node.type === 'video' ? tr('canvas.videoGenerateNode') : tr('canvas.apiGenerate');
     const displayTitle = node.type === 'image' && node.url ? nodeTitleForMedia(node) : title;
     // 失败徽章只在一键运行模式中显示，单节点失败已通过 alert 提示
     const showStatus = ['generator','midjourney','msgen','comfy','ltxDirector','llm','video','rh','minimax'].includes(node.type) && node.runStatus
@@ -6270,6 +5779,7 @@ function renderNode(node){
             scheduleGeneratorInputSync();
         };
     }
+    if(node.type === 'visionJudge') body.appendChild(renderVisionJudgeBody(node));
     if(node.type === 'loop') body.appendChild(renderLoopBody(node));
     if(node.type === 'group') {
         const items = (node.items || []).map(id => nodes.find(n => n.id === id)).filter(Boolean);
@@ -6332,7 +5842,11 @@ function renderNode(node){
         if(e.button !== 0 || !isNodeDragSurface(e.target)) return;
         startNodeDrag(e, node);
     };
-    const canInput = ['generator','midjourney','comfy','ltxDirector','output','llm','msgen','video','rh','minimax'].includes(node.type) || (node.type === 'loop' && (node.imageInput || node.showPrompt));
+    if(node.type !== 'visionJudge' && visionHasWorkflow(node.id)){
+        body.insertAdjacentHTML('beforeend', visionWorkflowButton(node));
+        bindVisionActions(body);
+    }
+    const canInput = ['visionJudge','generator','midjourney','comfy','ltxDirector','output','llm','msgen','video','rh','minimax'].includes(node.type) || (node.type === 'loop' && (node.imageInput || node.showPrompt));
     const canOutput = ['image','prompt','loop','group','promptGroup','generator','midjourney','comfy','ltxDirector','llm','msgen','video','rh','minimax','output'].includes(node.type);
     if(canInput) el.insertAdjacentHTML('beforeend', `<div class="port in" title="${tr('canvas.connectHere')}"></div>`);
     if(canOutput) el.insertAdjacentHTML('beforeend', `<div class="port out" title="${tr('canvas.dragConnect')}"></div>`);
@@ -6351,8 +5865,9 @@ function renderNode(node){
     };
     el.querySelector('.resize-handle').onmousedown = e => { if(e.button === 0 && !e.shiftKey) startNodeResize(e, node); };
     el.ondragstart = e => { e.preventDefault(); e.stopPropagation(); };
-    const out = el.querySelector('.port.out');
-    if(out) out.onmousedown = e => { if(e.button === 0 && !e.shiftKey) startLink(e, node.id, 'out'); };
+    el.querySelectorAll('.port.out').forEach(out => {
+        out.onmousedown = e => { if(e.button === 0 && !e.shiftKey && !out.disabled) startLink(e, node.id, 'out', out.dataset.portId); };
+    });
     const inp = el.querySelector('.port.in');
     if(inp) inp.onmousedown = e => { if(e.button === 0 && !e.shiftKey) startLink(e, node.id, 'in'); };
     return el;
@@ -6459,6 +5974,7 @@ function outputDomKeyForPending(pending){
     return `pending:${pending?.id || ''}`;
 }
 function refreshOutputNodeContent(node){
+    if(visionHasWorkflow(node.id)) return false;
     const el = nodesEl.querySelector(`.output-node[data-id="${CSS.escape(node.id)}"]`);
     const body = el?.querySelector('.node-body');
     const grid = body?.querySelector('.output-grid');
@@ -6514,6 +6030,7 @@ function refreshOutputNodeContent(node){
 function defaultNodeSize(type){
     if(type === 'image') return {w:260, h:336};
     if(type === 'prompt') return {w:310, h:0};
+    if(type === 'visionJudge') return {w:360, h:0};
     if(type === 'loop') return {w:336, h:0};
     if(type === 'llm') return {w:420, h:590};
     if(type === 'generator') return {w:380, h:0};
@@ -7205,7 +6722,6 @@ function renderPromptAssetManager(){
     `;
 }
 async function loadCanvasPromptTemplates(){
-    if(canvasPromptTemplatesLoaded) return canvasPromptTemplates;
     try {
         loadCanvasPromptTemplateGroups();
         loadCanvasPromptTemplateOverrides();
@@ -7291,19 +6807,7 @@ function activeCanvasPromptLibraryItems(){
             libraryId:'system',
             libraryName:'系统提示词库',
         }));
-    const remotes = canvasPromptLibraries
-        .filter(item => item.id !== 'system')
-        .flatMap(item => (item.items || [])
-            .filter(t => t?.id && t?.positive)
-            .map(t => ({
-                ...t,
-                sourceId:t.id,
-                remote:true,
-                builtin:false,
-                libraryId:item.id,
-                libraryName:item.name || '提示词库',
-            })));
-    return [...builtins, ...remotes];
+    return builtins;
 }
 function refreshCanvasPromptTemplatesFromLibraries(){
     canvasPromptTemplatesLoaded = true;
@@ -7316,11 +6820,13 @@ function renderCanvasPromptLibrarySelect(){
 }
 function activeCanvasPromptTemplateGroups(){
     const lib = activeCanvasPromptLibrary();
-    if(!lib || lib.id === 'system') return promptTemplateGroups;
-    return Array.isArray(lib.categories) ? lib.categories.filter(c => c?.id && c?.name) : [];
+    if(Array.isArray(lib?.categories)) return lib.categories.filter(c => c?.id && c?.name);
+    return !lib || lib.id === 'system' ? promptTemplateGroups : [];
 }
 function canvasPromptTemplateCategoryLabel(category){
     if(category === 'all') return tr('smart.tplAll');
+    const storedName = activeCanvasPromptTemplateGroups().find(group => group.id === category)?.name;
+    if(storedName) return storedName;
     const lib = activeCanvasPromptLibrary();
     if(lib && lib.id !== 'system'){
         return activeCanvasPromptTemplateGroups().find(g => g.id === category)?.name || category || '';
@@ -7345,14 +6851,12 @@ function canvasPromptTemplateScene(template){
     return template?.scene || '';
 }
 function canvasPromptTemplateText(template, mode='positive'){
-    const positive = String(template?.positive || '').trim();
-    if(mode === 'positive') return positive;
-    const negative = String(template?.negative || '').trim();
-    const params = Object.entries(template?.params || {})
-        .map(([key, value]) => `${key}: ${value}`)
-        .join('\n');
-    return [positive, negative ? `Negative prompt:\n${negative}` : '', params ? `Params:\n${params}` : ''].filter(Boolean).join('\n\n');
+    const content = [String(template?.positive || ''), template?.negative ? `负向提示词:\n${template.negative}` : ''].filter(Boolean).join('\n\n');
+    if(mode === 'positive') return content;
+    const params = Object.entries(template?.params || {}).map(([key, value]) => `${key}: ${value}`).join('\n');
+    return [content, params ? `Params:\n${params}` : ''].filter(Boolean).join('\n\n');
 }
+
 function canvasPromptTemplateSearchText(template){
     return [
         template?.name,
@@ -7468,7 +6972,7 @@ async function saveCanvasPromptTemplateEdit(){
                 ...(canvasPromptTemplateOverrides.editedBuiltins[item.sourceId || item.id] || {}),
                 name,
                 category,
-                positive
+                positive, negative: ''
             };
             saveCanvasPromptTemplateOverrides();
             promptTemplateEditing = false;
@@ -7479,7 +6983,7 @@ async function saveCanvasPromptTemplateEdit(){
         const data = await fetch(`/api/prompt-libraries/items/${encodeURIComponent(item.id)}`, {
             method:'PATCH',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({library_id:item.libraryId || lib.id, name, category, scene:item.scene || '', positive, negative:item.negative || ''})
+            body:JSON.stringify({library_id:item.libraryId || lib.id, name, category, scene:item.scene || '', positive, negative:''})
         }).then(async r => {
             if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '保存失败');
             return r.json();
@@ -7630,6 +7134,7 @@ function renderPromptTemplateModal(){
     renderCanvasPromptLibrarySelect();
     const scrollSnapshot = promptTemplateScrollSnapshot();
     const activeGroups = activeCanvasPromptTemplateGroups();
+    if(promptTemplateCategory !== 'all' && !activeGroups.some(group => group.id === promptTemplateCategory)) promptTemplateCategory = 'all';
     const categories = [{id:'all', name:tr('smart.tplAll')}, ...activeGroups.map(group => ({...group, name:canvasPromptTemplateCategoryLabel(group.id)}))];
     const counts = canvasPromptTemplates.reduce((map, item) => {
         const category = item.category || 'mine';
@@ -7718,15 +7223,15 @@ function renderPromptTemplateModal(){
                         ${promptTemplateGroups.map(group => `<option value="${escapeAttr(group.id)}" ${group.id === (selected.category || 'mine') ? 'selected' : ''}>${escapeHtml(canvasPromptTemplateCategoryLabel(group.id))}</option>`).join('')}
                     </select>
                     <label>${escapeHtml(tr('smart.tplContent'))}</label>
-                    <textarea data-template-edit-text placeholder="${escapeAttr(tr('smart.tplContent'))}">${escapeHtml(selected.positive || '')}</textarea>
+                    <textarea data-template-edit-text placeholder="${escapeAttr(tr('smart.tplContent'))}">${escapeHtml(canvasPromptTemplateText(selected))}</textarea>
                 </div>
             ` : `
                 <div class="prompt-template-preview-content">
                     <div class="prompt-template-section">
-                        <label>${escapeHtml(tr('smart.tplPositive'))}</label>
-                        <p>${escapeHtml(selected.positive || '')}</p>
+                        <label>${escapeHtml(tr('smart.tplContent'))}</label>
+                        <p>${escapeHtml(canvasPromptTemplateText(selected))}</p>
                     </div>
-                    ${selected.negative ? `<div class="prompt-template-section"><label>${escapeHtml(tr('smart.tplNegative'))}</label><p>${escapeHtml(selected.negative)}</p></div>` : ''}
+
                     ${Object.keys(selected.params || {}).length ? `<div class="prompt-template-section"><label>${escapeHtml(tr('smart.tplParams'))}</label><p>${escapeHtml(Object.entries(selected.params).map(([k,v]) => `${k}: ${v}`).join('\n'))}</p></div>` : ''}
                 </div>
             `}
@@ -8012,12 +7517,12 @@ function renderLoopBody(node){
     return wrap;
 }
 function renderLLMBody(node){
+    if(node.llmProvider === 'modelscope') return renderMsGenBody(node);
     const wrap = document.createElement('div');
     wrap.className = 'llm-body';
     const mode = node.mode || 'node';
     node.llmProvider = resolveChatProviderId(node.llmProvider || 'comfly');
     const llmProv = node.llmProvider;
-    if(llmProv === 'modelscope') node.model = node.llmMsModel || node.model;
     if(!providerChatModels(llmProv).includes(node.model)) node.model = providerChatModels(llmProv)[0] || node.model;
     const modelOpts = chatModelOptions(node.model, llmProv);
     const imgs = llmInputImages(node);
@@ -8053,14 +7558,12 @@ function renderLLMBody(node){
         node.llmProvider = e.target.value;
         const models = providerChatModels(node.llmProvider);
         node.model = models[0] || '';
-        if(node.llmProvider === 'modelscope') node.llmMsModel = node.model;
         render();
         scheduleSave();
     };
     modelSelect.onchange = e => {
         e.stopPropagation();
         node.model = e.target.value;
-        if((node.llmProvider||'comfly') === 'modelscope') node.llmMsModel = e.target.value;
         scheduleSave();
     };
     wrap.querySelector('.llm-sys-toggle').onclick = e => { e.stopPropagation(); node.showSystem = !node.showSystem; render(); scheduleSave(); };
@@ -8261,6 +7764,7 @@ function onLLMPaneResize(e){
     }
 }
 function llmInputText(node){
+    if(node._visionSources) return node._visionSources.map(s => s.prompt).filter(Boolean).join('\n\n');
     return connections.filter(c => c.to === node.id).map(c => nodes.find(n => n.id === c.from)).filter(Boolean).map(n => {
         if(n.type === 'prompt') return n.text || '';
         if(n.type === 'loop') return renderLoopPrompt(n);
@@ -8270,6 +7774,7 @@ function llmInputText(node){
     }).filter(Boolean).join('\n\n');
 }
 function llmInputImages(node){
+    if(node._visionSources) return imageRefsOnly(node._visionSources.flatMap(s => s.refs || [])).map(r => r.url);
     const urls = [];
     connections.filter(c => c.to === node.id).map(c => nodes.find(n => n.id === c.from)).filter(Boolean).forEach(n => {
         if(n.type === 'image' && n.url && mediaKindForNode(n) === 'image') urls.push(n.url);
@@ -8284,6 +7789,7 @@ function llmInputImages(node){
     return urls;
 }
 function llmInputVideos(node){
+    if(node._visionSources) return videoRefsOnly(node._visionSources.flatMap(s => s.refs || [])).map(r => r.url);
     const urls = [];
     connections.filter(c => c.to === node.id).map(c => nodes.find(n => n.id === c.from)).filter(Boolean).forEach(n => {
         if(n.type === 'image' && n.url && mediaKindForNode(n) === 'video') urls.push(n.url);
@@ -8298,6 +7804,7 @@ function llmInputVideos(node){
     return urls;
 }
 function renderGeneratorBody(node){
+    if(node.apiProvider === 'modelscope') return renderMsGenBody(node);
     const wrap = document.createElement('div');
     wrap.className = 'generator-body';
     const inputSources = generatorSources(node);
@@ -10681,7 +10188,7 @@ async function rhBuildNodeInfoList(node, media){
     return result;
 }
 async function runRhNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
+    const node = opts.visionNode || nodes.find(n => n.id === nodeId);
     if(!node || (node.running && !opts.cascade)) return;
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     ensureRhNodeSelection(node);
@@ -11061,6 +10568,7 @@ function shouldCreateOutputForNode(node){
     return !hasDownstreamGenerator(node.id);
 }
 function outputForNode(node, dx=460){
+    if(node?._visionRun) return null;
     if(!node || !shouldCreateOutputForNode(node)) return null;
     let out = connections
         .filter(c => c.from === node.id)
@@ -11102,6 +10610,7 @@ function syncLatestGeneratedOutputToConnection(fromId, toId){
     return appendOutputImagesWithoutDuplicates(out, [latest]) > 0;
 }
 function syncConnectedOutputsFromGenerated(node, outputs){
+    if(node?._visionRun) return;
     if(!node || !CANVAS_MEDIA_OUTPUT_TYPES.includes(node.type)) return;
     const list = (outputs || []).filter(item => outputUrlValue(item));
     if(!list.length) return;
@@ -11147,6 +10656,7 @@ function mediaRefsFromNode(node){
     return [];
 }
 function generatorSources(gen){
+    if(gen._visionSources) return gen._visionSources;
     return connections.filter(c => c.to === gen.id).map(c => nodes.find(n => n.id === c.from)).filter(Boolean).map(n => {
         if(n.type === 'output' && (n.images||[]).length){
             // 从 output 节点取最新一张图当作 reference 给下游
@@ -11299,8 +10809,9 @@ function refreshGeneratorInputViews(){
     });
 }
 async function runGenerator(genId, opts={}){
-    const gen = nodes.find(n => n.id === genId);
+    const gen = opts.visionNode || nodes.find(n => n.id === genId);
     if(!gen || (gen.running && !opts.cascade)) return;
+    if(gen.apiProvider === 'modelscope') return runMsGenNode(gen.id, opts);
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     const sources = orderedSources(gen, generatorSources(gen));
     const prompt = sources.map(s => s.prompt).filter(Boolean).join('\n\n');
@@ -11418,7 +10929,7 @@ async function completeMidjourneyRun(node, out, run, result, append=false){
     scheduleSave();
 }
 async function runMidjourneyNode(nodeId, opts={}){
-    const node = nodes.find(item => item.id === nodeId);
+    const node = opts.visionNode || nodes.find(item => item.id === nodeId);
     if(!node || (node.running && !opts.cascade)) return;
     const providerId = resolveMidjourneyProviderId(node.apiProvider || '');
     if(!providerId){ showErrorModal('请先在 API 设置中添加 APIMart 平台。', 'Midjourney'); return; }
@@ -11544,8 +11055,9 @@ async function runMidjourneyModal(nodeId, maskRef){
     }
 }
 async function runGeneratorLegacy(genId, opts={}){
-    const gen = nodes.find(n => n.id === genId);
+    const gen = opts.visionNode || nodes.find(n => n.id === genId);
     if(!gen || (gen.running && !opts.cascade)) return;
+    if(gen.apiProvider === 'modelscope') return runMsGenNode(gen.id, opts);
     const sources = orderedSources(gen, generatorSources(gen));
     const prompt = sources.map(s => s.prompt).filter(Boolean).join('\n\n');
     const refs = imageRefsOnly(sources.flatMap(s => s.refs || []));
@@ -11600,7 +11112,7 @@ async function runGeneratorLegacy(genId, opts={}){
     }
 }
 async function runVideoNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
+    const node = opts.visionNode || nodes.find(n => n.id === nodeId);
     if(!node || (node.running && !opts.cascade)) return;
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     const sources = orderedSources(node, generatorSources(node));
@@ -11839,7 +11351,13 @@ async function runMiniMaxRunningHub(node, media, options={}){
     throw new Error(tr('canvas.rhTimeout'));
 }
 async function runMiniMaxNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
+    if (!StudioImageCapabilities.localEnabled()) {
+        const message = '此节点需要可选本地模型功能。';
+        if (opts.cascade) throw new Error(message);
+        alert(message);
+        return;
+    }
+    const node = opts.visionNode || nodes.find(n => n.id === nodeId);
     if(!node || (node.running && !opts.cascade)) return;
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     const sourceData = miniMaxRefsForNode(node);
@@ -12238,6 +11756,7 @@ function clearStuckGeneratorRunning(node){
     node.running = false;
 }
 function resetCascadeRuntimeState(){
+    if(typeof resetVisionRuntime === 'function') resetVisionRuntime();
     cascadeRunningIds.clear();
     cascadeStopIds.clear();
     cascadeSerialIds.clear();
@@ -12491,7 +12010,7 @@ function renderLTXDirectorBody(node){
     return wrap;
 }
 async function runLTXDirectorNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
+    const node = opts.visionNode || nodes.find(n => n.id === nodeId);
     if(!node || node.type !== 'ltxDirector') return;
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     clearStuckGeneratorRunning(node);
@@ -12576,7 +12095,7 @@ async function runLTXDirectorNode(nodeId, opts={}){
     }
 }
 async function runComfyNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
+    const node = opts.visionNode || nodes.find(n => n.id === nodeId);
     if(!node || (node.running && !opts.cascade)) return;
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     const sources = orderedSources(node, generatorSources(node));
@@ -12736,6 +12255,7 @@ async function runComfyNode(nodeId, opts={}){
     }
 }
 async function callCanvasLLM(node, message, messages=[], options={}){
+    if(node.llmProvider === 'modelscope') throw new Error('ModelScope 服务已移除，请手动选择其他模型。');
     const llmProv = resolveChatProviderId(node.llmProvider || 'comfly');
     const model = resolveChatModel(node.model || node.llmMsModel, llmProv);
     const images = llmInputImages(node);
@@ -12746,7 +12266,6 @@ async function callCanvasLLM(node, message, messages=[], options={}){
         body:JSON.stringify({
             message,
             model,
-            ms_model: llmProv === 'modelscope' ? model : '',
             provider: llmProv,
             // The System switch controls whether any system message is sent.
             // Keep the default only when the user explicitly enables it.
@@ -12764,7 +12283,8 @@ async function callCanvasLLM(node, message, messages=[], options={}){
     return result.text || '';
 }
 async function runLLMNode(nodeId, opts={}){
-    const node = nodes.find(n => n.id === nodeId);
+    if(!opts.cascade && visionBusy(nodeId)) return;
+    const node = opts.visionNode || nodes.find(n => n.id === nodeId);
     if(!node || (node.running && !opts.cascade)) return;
     const cascadeTargetId = cascadeTargetIdFromOptions(opts);
     const input = llmInputText(node) || node.userInput || '';
@@ -12829,6 +12349,7 @@ function findLoopCascadeTarget(loopId){
     return (terminal || candidates.sort((a, b) => b.depth - a.depth)[0])?.id || '';
 }
 function cascadeBtnHtml(node){
+    if(visionHasWorkflow(node.id)) return '';
     // 仅链尾节点显示一键运行
     if(!isTerminalGenerator(node.id)) return '';
     // 也要求至少有上游生成节点，否则没意义
@@ -12964,6 +12485,7 @@ function computeConnectedWorkflowOrder(anchorId){
     return order;
 }
 async function runCanvasGenerate(nodeId){
+    if(visionBusy(nodeId)) return;
     const node = nodes.find(n => n.id === nodeId);
     if(!node || node.running || cascadeRunningIds.has(nodeId)) return;
     return runCascadeNodeByType(node, {cascade:false});
@@ -13022,6 +12544,7 @@ function cascadeUiNodeIds(targetId, order=null){
     return [...ids].filter(Boolean);
 }
 async function runNodeCascade(nodeId){
+    if(visionHasWorkflow(nodeId)) return runVisionWorkflow(nodeId);
     const target = nodes.find(n => n.id === nodeId);
     if(!target) return;
     if(target.running){ alert('当前节点正在运行'); return; }
@@ -13316,6 +12839,9 @@ function runSnapshot(node, prompt, refs=[]){
     delete clone.runStatus;
     delete clone.runError;
     delete clone.inputs;
+    delete clone._visionRun;
+    delete clone._visionSources;
+    delete clone._activeLoopCtx;
     return {
         nodeType: node?.type || '',
         node: clone,
@@ -13594,6 +13120,7 @@ async function waitCanvasComfyTaskResult(taskId, options={}){
     }
 }
 async function runQueuedComfyGenerate(payload, options={}){
+    if (!StudioImageCapabilities.localEnabled()) throw new Error('本地模型未启用，请选择在线模型。');
     const task = await createCanvasComfyTask(payload, options);
     return waitCanvasComfyTaskResult(task.task_id, options);
 }
@@ -14278,9 +13805,9 @@ assetManagerModal?.addEventListener('click', async event => {
         if(!item) return;
         const name = window.prompt('提示词名称', item.name || '提示词');
         if(!String(name || '').trim()) return;
-        const positive = window.prompt('提示词内容', item.positive || '');
+        const positive = window.prompt('提示词内容', canvasPromptTemplateText(item));
         if(!String(positive || '').trim()) return;
-        const data = await fetch(`/api/prompt-libraries/items/${encodeURIComponent(item.id)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:lib.id, name, positive, negative:item.negative || '', category:item.category || 'mine', scene:item.scene || ''})}).then(r => r.json());
+        const data = await fetch(`/api/prompt-libraries/items/${encodeURIComponent(item.id)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({library_id:lib.id, name, positive, negative:'', category:item.category || 'mine', scene:item.scene || ''})}).then(r => r.json());
         canvasPromptLibraries = data.library?.libraries || canvasPromptLibraries;
         refreshCanvasPromptTemplatesFromLibraries();
         renderAssetManager(); return;
@@ -14871,7 +14398,8 @@ function selectedWorkflowPayload(){
     const pickedConnections = connections.filter(c => ids.has(c.from) && ids.has(c.to)).map(c => ({...c}));
     return {
         format:'infinite-canvas-workflow',
-        version:1,
+        version:pickedNodes.some(n => n.type === 'visionJudge') ? 2 : 1,
+        requiredFeatures:pickedNodes.some(n => n.type === 'visionJudge') ? VisionRouting.features : [],
         exported_at:Date.now(),
         nodes:serializableCanvasNodes(pickedNodes),
         connections:pickedConnections
@@ -14926,6 +14454,7 @@ function updateWorkflowTransferMeta(){
     workflowExportMeta?.classList.remove('busy', 'success');
     if(workflowExportMeta) workflowExportMeta.textContent = nodeCount ? `已选择 ${nodeCount} 个节点，${connCount} 条连线` : '未选择节点，请先框选要导出的组件';
     if(workflowTransferSub) workflowTransferSub.textContent = nodeCount ? '导出当前框选内容，或把工作流导入到当前画布' : '请先框选节点再导出；导入会追加到当前画布';
+    if(payload.version===2 && workflowTransferSub) workflowTransferSub.textContent = '含视觉判断：将导出版本 2 工作流，需要支持视觉判断的新版本才能使用。';
 }
 function setWorkflowLibraryExportState(state='idle', text='导出到资产库'){
     if(!workflowExportLibraryBtn) return;
@@ -15037,6 +14566,7 @@ function findCanvasAssetCategoryForItem(itemId){
     return null;
 }
 function normalizeImportedWorkflow(data){
+    VisionRouting.validateVersion(data);
     if(Array.isArray(data?.nodes)) return {nodes:data.nodes, connections:Array.isArray(data.connections) ? data.connections : []};
     if(Array.isArray(data?.workflow?.nodes)) return {nodes:data.workflow.nodes, connections:Array.isArray(data.workflow.connections) ? data.workflow.connections : []};
     return {nodes:[], connections:[]};
@@ -15192,10 +14722,11 @@ function onNodeResize(e){
     renderSelectionHub();
     scheduleMinimapRender();
 }
-function startLink(e, originId, originKind){
+function startLink(e, originId, originKind, fromPort=''){
+    if(visionBusy(originId)) return;
     e.stopPropagation();
     originKind = originKind || 'out';
-    const src = portPoint(originId, originKind);
+    const src = portPoint(originId, originKind, fromPort);
     const source = nodes.find(n => n.id === originId);
     tempLink = {from:originId, originKind, x1:src.x, y1:src.y, x2:src.x, y2:src.y};
     window.onmousemove = e2 => {
@@ -15212,7 +14743,10 @@ function startLink(e, originId, originKind){
             const targetId = target.dataset.id;
             const fromId = originKind === 'out' ? originId : targetId;
             const toId = originKind === 'out' ? targetId : originId;
-            if(canConnect(fromId, toId)){
+            const branch = originKind === 'out' ? fromPort : targetPort?.dataset.portId;
+            if(nodes.find(n => n.id === fromId)?.type === 'visionJudge'){
+                try { connectVisionPort(fromId, toId, branch); } catch(error) { showErrorModal(error.message, '不能连接'); }
+            } else if(canConnect(fromId, toId)){
                 if(!connections.some(c => c.from === fromId && c.to === toId)){
                     pushUndo();
                     connections.push({id:uid('c'), from:fromId, to:toId});
@@ -15223,7 +14757,9 @@ function startLink(e, originId, originKind){
                 render();
             }
         } else if(originKind === 'out'){
-            if(source && CANVAS_GENERATOR_TYPES.includes(source.type)){
+            if(source?.type === 'visionJudge'){
+                openVisionConnectionDialog(source.id, fromPort);
+            } else if(source && CANVAS_GENERATOR_TYPES.includes(source.type)){
                 const p = screenToWorld(e2.clientX, e2.clientY);
                 pushUndo();
                 const out = {id:uid('out'), type:'output', x:p.x, y:p.y - 63, images:[]};
@@ -15282,7 +14818,13 @@ function wouldCreateGeneratorCycle(fromId, toId){
     };
     return walk(toId);
 }
-function canConnect(fromId, toId){
+function canConnect(fromId, toId, fromPort=''){
+    const vf = nodes.find(n => n.id === fromId), vt = nodes.find(n => n.id === toId);
+    if(vf?.type === 'visionJudge' || vt?.type === 'visionJudge'){
+        if(!vf || !vt || fromId === toId || wouldCreateGeneratorCycle(fromId,toId)) return false;
+        if(vf.type === 'visionJudge') return ['output',...VisionRouting.runTypes].includes(vt.type) && VisionRouting.branches(vf).some(b => b.id === fromPort);
+        return ['image','group','output','loop',...VisionRouting.runTypes].includes(vf.type);
+    }
     if(!fromId || !toId || fromId === toId) return false;
     const from = nodes.find(n => n.id === fromId);
     const to = nodes.find(n => n.id === toId);
@@ -15304,7 +14846,7 @@ function canConnect(fromId, toId){
     return CANVAS_GENERATOR_TYPES.includes(to.type) && ['image','prompt','loop','group','promptGroup','output','llm'].includes(from.type);
 }
 function sanitizeConnections(){
-    connections = (connections || []).filter(c => canConnect(c.from, c.to));
+    connections = (connections || []).filter(c => visionHasWorkflow(c.from) || visionHasWorkflow(c.to) || canConnect(c.from, c.to, c.fromPort));
 }
 function endDrag(event=null){
     const hadContentDrag = Boolean(dragNode || resizeNode || llmPaneDrag || knifeChanged || tempLink);
@@ -15523,11 +15065,11 @@ function updateGroupMembership(movedNodes){
     }
 }
 
-function portPoint(id, kind){
+function portPoint(id, kind, portId=''){
     const n = nodes.find(x => x.id === id);
     if(!n) return {x:0,y:0};  // 真正的孤儿连线（节点已删除）：renderLinks 会跳过它
     const el = nodesEl.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
-    const port = el?.querySelector(`.port.${kind}`);
+    const port = el?.querySelector(portId ? `.port.${kind}[data-port-id="${CSS.escape(portId)}"]` : `.port.${kind}`);
     if(port){
         const r = port.getBoundingClientRect();
         return screenToWorld(r.left + r.width / 2, r.top + r.height / 2);
@@ -15553,10 +15095,10 @@ function renderLinks(){
         // 端点无法解析（节点已删除、或尚未渲染出 DOM）就跳过，否则连线会被画到 (0,0)，
         // 看起来像很多连线都从同一个空白处中转。
         if(!canResolvePort(c.from) || !canResolvePort(c.to)) return;
-        segments.push({c, a:portPoint(c.from, 'out'), b:portPoint(c.to, 'in')});
+        segments.push({c, a:portPoint(c.from, 'out', c.fromPort), b:portPoint(c.to, 'in')});
     });
     segments.forEach(({c, a, b}) => {
-        const relClass = isConnectionSelected(c) ? ' link-active' : '';
+        const relClass = (isConnectionSelected(c) ? ' link-active' : '') + visionLinkClass(c);
         linksEl.appendChild(pathEl(a.x, a.y, b.x, b.y, `link${relClass}`));
         linkControlsEl.appendChild(linkDeleteButton(c, a, b));
         linksEl.appendChild(linkHitEl(a.x, a.y, b.x, b.y, c.id));
@@ -15605,7 +15147,7 @@ function setHoveredConnection(id){
     }
 }
 function connectionDistanceToPoint(connection, point){
-    const from = portPoint(connection.from, 'out');
+    const from = portPoint(connection.from, 'out', connection.fromPort);
     const to = portPoint(connection.to, 'in');
     let min = Infinity;
     let prev = cubicPoint(from, to, 0);
@@ -15690,7 +15232,7 @@ function cubicPoint(a, b, t){
     };
 }
 function knifeHitsConnection(a, b, connection){
-    const from = portPoint(connection.from, 'out');
+    const from = portPoint(connection.from, 'out', connection.fromPort);
     const to = portPoint(connection.to, 'in');
     const threshold = Math.max(8, 12 / viewport.scale);
     let prev = cubicPoint(from, to, 0);
@@ -16081,6 +15623,17 @@ function hasImageDropData(dataTransfer){
 function hasOutputImageDrag(dataTransfer){ return [...(dataTransfer?.types || [])].includes('application/x-canvas-output-image'); }
 function escapeHtml(str){ return String(str == null ? '' : str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
 function escapeAttr(str){ return escapeHtml(str); }
+
+try {
+    const promptOrderChannel = new BroadcastChannel('studio-prompts');
+    promptOrderChannel.onmessage = async event => {
+        if(event.data?.type !== 'prompt-libraries-changed' || promptTemplateEditing || promptTemplateGroupEditMode) return;
+        if(promptTemplateModal?.classList.contains('open')) {
+            await loadCanvasPromptTemplates();
+            renderPromptTemplateModal();
+        }
+    };
+} catch(_) {}
 
 window.onload = async () => {
     applyTheme(localStorage.getItem('studio_theme') || localStorage.getItem(CANVAS_THEME_KEY) || 'light');

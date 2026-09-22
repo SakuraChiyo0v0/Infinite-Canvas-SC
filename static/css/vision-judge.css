@@ -1,0 +1,33 @@
+.visionJudge-node .node-body{overflow:visible}
+.vision-judge-body{display:flex;flex-direction:column;gap:10px;font-size:12px;color:var(--text-primary,#334155)}
+.vision-judge-body fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;min-width:0}
+.vision-judge-body label,.vision-connection-dialog label{display:flex;flex-direction:column;gap:5px;font-weight:600}
+.vision-judge-body input,.vision-judge-body select,.vision-judge-body textarea,.vision-connection-dialog select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;background:var(--node-bg,#fff);color:inherit;padding:7px;font:inherit;resize:vertical}
+.vision-judge-body button,.vision-connection-dialog button,.vision-flow-actions button{border:1px solid #b8c9de;border-radius:7px;background:var(--node-bg,#f8fafc);color:inherit;padding:6px 9px;font-size:12px;cursor:pointer}
+.vision-judge-body button:disabled{opacity:.5;cursor:default}
+.vision-judge-body :focus-visible,.vision-connection-dialog :focus-visible{outline:2px solid #6366f1;outline-offset:2px}
+.vision-hint{font-size:11px;line-height:1.5;color:#64748b;margin:0}
+.vision-input-preview{display:flex;gap:6px;flex-wrap:wrap;font-size:11px;color:#64748b}
+.vision-input-preview img{width:74px;height:74px;object-fit:contain;border-radius:6px;background:#e2e8f0}
+.vision-result{border:1px solid #cbd5e1;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;overflow-wrap:anywhere}
+.vision-result p{margin:0;white-space:pre-wrap;line-height:1.5}
+.vision-error{color:#b45309;white-space:pre-wrap}
+.vision-categories{display:flex;flex-direction:column;gap:8px}
+.vision-category{padding:8px;border:1px solid #cbd5e1;border-radius:7px;display:grid;gap:5px}
+.vision-exits{display:flex;flex-direction:column;gap:8px;border-top:1px solid #cbd5e1;padding-top:10px}
+.vision-exit{display:flex;align-items:center;gap:8px;min-height:28px}
+.vision-exit span{margin-right:auto}
+.vision-exit .vision-port{position:relative;top:auto;right:auto;left:auto;transform:none;width:17px;height:17px;min-width:17px;border-radius:50%;padding:0;background:#6366f1;border:2px solid #e0e7ff}
+.vision-exit .vision-port::after{display:none}
+.vision-flow-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;font-size:11px;color:#64748b}
+.vision-flow-actions span{margin-right:auto}
+.vision-connection-dialog{width:min(470px,90vw);border:1px solid #cbd5e1;border-radius:14px;padding:22px;background:var(--node-bg,#fff);color:#334155;box-shadow:0 20px 70px #0004}
+.vision-connection-dialog::backdrop{background:#0f172a66}
+.vision-connection-dialog form{display:flex;flex-direction:column;gap:14px}
+.vision-connection-dialog h3{margin:0;font-size:17px}
+.vision-existing{display:flex;flex-direction:column;gap:12px}
+.vision-dialog-actions{display:flex;justify-content:flex-end;gap:8px}
+.link.vision-link-active{stroke:#6366f1;stroke-width:3}
+.link.vision-link-skipped{opacity:.25;stroke-dasharray:5 5}
+html.theme-dark .vision-judge-body,body.theme-dark .vision-judge-body{color:#e2e8f0}
+html.theme-dark .vision-judge-body input,html.theme-dark .vision-judge-body select,html.theme-dark .vision-judge-body textarea,html.theme-dark .vision-judge-body button,html.theme-dark .vision-connection-dialog,html.theme-dark .vision-connection-dialog select,html.theme-dark .vision-connection-dialog button{background:#1e293b;color:#e2e8f0;border-color:#475569}

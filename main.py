@@ -16,6 +16,7 @@ import prompt_workbench_store
 import prompt_library_order
 import character_library
 import image_collector
+import vision_judge
 import subprocess
 import time
 import traceback
@@ -15612,6 +15613,40 @@ async def canvas_video(payload: CanvasVideoRequest):
 
 # --- Canvas LLM ---
 
+@app.post("/api/canvas-vision-judge")
+async def canvas_vision_judge(payload: vision_judge.VisionJudgeRequest, request: Request):
+    ensure_same_origin_request(request)
+    try:
+        branches = vision_judge.judge_branches(payload)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    provider = get_api_provider(payload.provider)
+    if provider.get("id") != payload.provider or provider.get("enabled") is False:
+        raise HTTPException(400, "所选平台不可用，请重新选择模型")
+    if is_codex_provider(provider) or is_gemini_cli_provider(provider):
+        raise HTTPException(400, "视觉判断首版支持 API 平台，请选择支持图片的对话模型")
+    if payload.model not in (provider.get("chat_models") or []):
+        raise HTTPException(400, "请选择平台已配置的对话模型")
+    # 只接受应用已经保存的图片，防止把任意本地文件当作图片发给服务商。
+    path = output_file_from_url(payload.image)
+    if not path or not os.path.isfile(path):
+        raise HTTPException(400, "请先上传或保存待判断图片")
+    try:
+        with Image.open(path) as image:
+            image.verify()
+    except Exception as exc:
+        raise HTTPException(400, "文件不是可识别的图片") from exc
+    started = time.monotonic()
+    text, model = await caption_image_with_provider(
+        path, vision_judge.judge_prompt(payload, branches), payload.provider, payload.model
+    )
+    try:
+        result = vision_judge.parse_judge_result(text, branches)
+    except ValueError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {**result, "model": model, "usage": None, "elapsedMs": round((time.monotonic() - started) * 1000)}
+
+
 @app.post("/api/canvas-llm")
 async def canvas_llm(payload: CanvasLLMRequest):
     _provider = get_api_provider(payload.provider)
@@ -15969,7 +16004,8 @@ def canvas_workflow_replace_strings(value, mapping):
 def canvas_workflow_payload(nodes, connections, resources=None):
     return {
         "format": "infinite-canvas-workflow",
-        "version": 1,
+        "version": 2 if vision_judge.workflow_features(nodes or []) else 1,
+        "requiredFeatures": vision_judge.workflow_features(nodes or []),
         "exported_at": now_ms(),
         "nodes": nodes or [],
         "connections": connections or [],
@@ -16071,6 +16107,7 @@ async def import_canvas_workflow(file: UploadFile = File(...)):
                 if not workflow_name:
                     raise HTTPException(status_code=400, detail="压缩包中没有 workflow.json")
                 workflow = json.loads(zf.read(workflow_name).decode("utf-8-sig"))
+                vision_judge.validate_workflow_version(workflow)
                 stamp = time.strftime("%Y%m%d-%H%M%S")
                 import_dir = os.path.join(OUTPUT_INPUT_DIR, f"workflow_import_{stamp}_{uuid.uuid4().hex[:6]}")
                 os.makedirs(import_dir, exist_ok=True)
@@ -16092,6 +16129,7 @@ async def import_canvas_workflow(file: UploadFile = File(...)):
                     resource_mapping[os.path.basename(archive)] = new_url
         else:
             workflow = json.loads(raw.decode("utf-8-sig"))
+            vision_judge.validate_workflow_version(workflow)
     except HTTPException:
         raise
     except zipfile.BadZipFile as exc:
